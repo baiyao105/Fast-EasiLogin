@@ -106,7 +106,7 @@ class AsyncCache:
         await asyncio.to_thread(self._cache.delete, key)
 
 
-def get_redis() -> AsyncCache:
+def get_cache() -> AsyncCache:
     global _CACHE, _ACACHE
     if _ACACHE is not None:
         return _ACACHE
@@ -119,7 +119,7 @@ def get_redis() -> AsyncCache:
 
 
 async def redis_json_get(key: str) -> dict:
-    r = get_redis()
+    r = get_cache()
     raw = await r.get(key)
     if not raw:
         return {}
@@ -130,13 +130,13 @@ async def redis_json_get(key: str) -> dict:
 
 
 async def redis_json_set(key: str, value: dict, ex: int | None = None) -> None:
-    r = get_redis()
+    r = get_cache()
     data = json.dumps(value, ensure_ascii=False)
     await r.set(key, data, ex=ex)
 
 
 async def clear_cache() -> None:
-    get_redis()
+    get_cache()
     if _CACHE is not None:
         await asyncio.to_thread(_CACHE.clear)
 

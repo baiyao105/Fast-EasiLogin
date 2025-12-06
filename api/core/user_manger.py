@@ -10,7 +10,7 @@ import httpx
 from fastapi import HTTPException
 
 from shared.models import AggregatedUserInfo, UserIdentityInfo, UserInfoExtendVo
-from shared.storage import get_redis, load_users
+from shared.storage import get_cache, load_users
 
 CLIENT_TIMEOUT = httpx.Timeout(connect=1.0, read=2.0, write=2.0, pool=5.0)
 CLIENT_LIMITS = httpx.Limits(max_keepalive_connections=20, max_connections=100)
@@ -152,7 +152,7 @@ async def is_token_invalid(token: str) -> bool:
 
 
 async def fetch_user_info_with_token(token: str) -> dict[str, Any]:
-    rc = get_redis()
+    rc = get_cache()
     cached = await rc.get(f"userinfo:{token}")
     if cached:
         try:
@@ -175,7 +175,7 @@ async def fetch_user_info_with_token(token: str) -> dict[str, Any]:
 async def user_login(userid: str, password_plain: str) -> dict[str, Any]:
     md5_pwd = hashlib.md5(password_plain.encode("utf-8")).hexdigest()
     cache_key = f"{userid}:{md5_pwd}"
-    rc = get_redis()
+    rc = get_cache()
     cached = await rc.get(f"login:{cache_key}")
     if cached:
         try:
@@ -245,7 +245,7 @@ def select_fields(data: dict[str, Any], fields: list[str] | None) -> dict[str, A
 
 
 async def get_aggregated_user_info(userid: str, password_plain: str, fields: list[str] | None = None) -> dict[str, Any]:
-    rc = get_redis()
+    rc = get_cache()
     md5_pwd = hashlib.md5(password_plain.encode("utf-8")).hexdigest()
     cache_key = f"{userid}:{md5_pwd}"
     cached = await rc.get(f"agg:{cache_key}")

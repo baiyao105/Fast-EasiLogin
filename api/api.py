@@ -8,7 +8,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import ORJSONResponse
 
 from shared.models import AppSaveDataBody, SaveUserBody, UserInfoRequest, UserRecord
-from shared.storage import clear_cache, close_cache, get_redis, load_users, save_users
+from shared.storage import clear_cache, close_cache, get_cache, load_users, save_users
 
 from .core.user_manger import (
     close_http_client,
@@ -85,7 +85,7 @@ async def sso_login_user(
     pt_type: str | None = None,
     pt_appid: str | None = None,
 ):
-    r = get_redis()
+    r = get_cache()
     token_bytes = await r.get(f"token_by_user:{userid}")
     now = time.time()
     if token_bytes:
@@ -171,7 +171,7 @@ def _extract_pt_token(request: Request) -> str | None:
 
 
 async def _invalidate_token_redis(token: str) -> None:
-    r = get_redis()
+    r = get_cache()
     raw = await r.get(f"token_index:{token}")
     if raw:
         try:
