@@ -9,6 +9,7 @@ FluentWindow {
     height: 700
     minimumWidth: 600
     minimumHeight: 400
+    title: qsTr("Seewo FastLogin")
 
     navigationItems: [
         {
@@ -33,4 +34,3 @@ FluentWindow {
         }
     ]
 }
-

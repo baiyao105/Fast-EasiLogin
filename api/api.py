@@ -8,7 +8,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import ORJSONResponse
 
 from shared.models import AppSaveDataBody, SaveUserBody, UserInfoRequest, UserRecord
-from shared.storage import clear_cache, close_cache, get_cache, load_users, save_users
+from shared.storage import cache_count, clear_cache, close_cache, get_cache, load_appsettings, load_users, save_users
 
 from .core.user_manger import (
     close_http_client,
@@ -20,12 +20,18 @@ from .core.user_manger import (
 )
 
 app = FastAPI(default_response_class=ORJSONResponse)
+_REQ_TS: list[float] = []
+_LOGS: list[dict[str, str]] = []
 
 TOKEN_TTL = 600.0
 
 
 @app.middleware("http")
 async def add_global_headers(request, call_next):
+    now = time.time()
+    _REQ_TS.append(now)
+    cutoff = now - 24 * 3600
+    _REQ_TS[:] = [t for t in _REQ_TS if t >= cutoff]
     response = await call_next(request)
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Credentials"] = "true"
@@ -41,6 +47,7 @@ app.add_middleware(GZipMiddleware, minimum_size=500)
 async def _startup():
     await init_http_client()
     await clear_cache()
+    _LOGS.append({"time": time.strftime("%H:%M:%S", time.localtime()), "level": "INFO", "text": "service started"})
 
 
 @app.on_event("shutdown")
@@ -155,6 +162,7 @@ async def sso_login_user(
         save_users(users_local)
 
     background_tasks.add_task(_update_user_profile, userid, token_info)
+    _LOGS.append({"time": time.strftime("%H:%M:%S", time.localtime()), "level": "INFO", "text": f"login success /user/agg/{userid}"})
     return {"message": "success", "statusCode": "200"}
 
 
@@ -225,6 +233,7 @@ async def save_user(body: SaveUserBody | AppSaveDataBody, background_tasks: Back
             user_id=(prev.user_id if prev else None),
         )
         save_users(users)
+        _LOGS.append({"time": time.strftime("%H:%M:%S", time.localtime()), "level": "INFO", "text": f"add user {body.userid}"})
         return {"message": "success", "statusCode": "200"}
     uid = body.pt_userid
     uname = body.pt_username
@@ -285,9 +294,38 @@ async def save_user(body: SaveUserBody | AppSaveDataBody, background_tasks: Back
         candidate = str(body.pt_token)
         if (not candidate.endswith("-offline")) and (not await is_token_invalid(candidate)):
             background_tasks.add_task(_update_user_profile, uid, uname, candidate)
+    _LOGS.append({"time": time.strftime("%H:%M:%S", time.localtime()), "level": "INFO", "text": f"save user {uname}"})
     return {"message": "success", "statusCode": "200"}
 
 
 @app.post("/saveData")
 async def save_data(body: SaveUserBody | AppSaveDataBody, background_tasks: BackgroundTasks):
     return await save_user(body, background_tasks)
+
+
+@app.get("/metrics")
+async def metrics():
+    settings = load_appsettings()
+    users = load_users()
+    accounts_total = len(users)
+    cached_logins = await cache_count("login:")
+    active_tokens = await cache_count("token_by_user:")
+    now = time.time()
+    requests_24h = sum(1 for t in _REQ_TS if t >= now - 24 * 3600)
+    requests_5m = sum(1 for t in _REQ_TS if t >= now - 300)
+    data = {
+        "service": {
+            "running": True,
+            "address": "127.0.0.1",
+            "port": int(settings.get("port", 24300)),
+        },
+        "accounts_total": accounts_total,
+        "cached_logins": cached_logins,
+        "requests_24h": requests_24h,
+        "active_tokens": active_tokens,
+        "invalid_tokens": 0,
+        "requests_5m": requests_5m,
+        "updated_at": time.strftime("%H:%M:%S", time.localtime()),
+        "logs": _LOGS[-20:],
+    }
+    return {"message": "success", "statusCode": "200", "data": data}

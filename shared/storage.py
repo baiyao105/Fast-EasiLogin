@@ -147,3 +147,21 @@ async def close_cache() -> None:
         await asyncio.to_thread(_CACHE.close)
     _ACACHE = None
     _CACHE = None
+
+
+async def cache_count(prefix: str) -> int:
+    get_cache()
+    cache = _CACHE
+    if cache is None:
+        return 0
+    def _count() -> int:
+        c = 0
+        for k in cache.iterkeys():
+            try:
+                s = str(k)
+            except Exception:
+                s = ""
+            if s.startswith(prefix):
+                c += 1
+        return c
+    return await asyncio.to_thread(_count)
