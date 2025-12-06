@@ -1,0 +1,64 @@
+[dependency-groups]
+dev = [
+  "prek>=0.2.10",
+  "pyright>=1.1.405",
+  "ruff>=0.14.8"
+]
+
+[project]
+dependencies = [
+  "fastapi ~= 0.123.10",
+  "uvicorn ~= 0.38.0",
+  "pydantic ~= 2.12.5",
+  "python-multipart ~= 0.0.20",
+  "httpx ~= 0.28.1"
+]
+description = "Seewo Fast-Login"
+name = "seewo-fastlogin"
+readme = "README.md"
+requires-python = ">=3.11"
+version = "0.1.0"
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.format]
+indent-style = "space"
+line-ending = "lf"
+quote-style = "double"
+skip-magic-trailing-comma = false
+
+[tool.ruff.lint]
+ignore = [
+  "ARG002",
+  "B008",
+  "C901",
+  "E501",
+  "F841",
+  "PLR0911",
+  "PLR0912",
+  "PLR0913",
+  "PLR0915"
+]
+select = [
+  "ASYNC",
+  "B",
+  "C90",
+  "DTZ",
+  "E",
+  "F",
+  "I",
+  "PIE",
+  "PL",
+  "PTH",
+  "RET",
+  "RUF",
+  "SIM",
+  "TRY",
+  "W"
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"tests/*" = ["B011"]
