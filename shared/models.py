@@ -8,6 +8,7 @@ class UserRecord(BaseModel):
     user_realname: str | None = None
     head_img: str
     pt_timestamp: int | None = None
+    user_id: str | None = None
 
 
 class SaveUserBody(BaseModel):
