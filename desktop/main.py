@@ -11,7 +11,7 @@ def main() -> int:
     base_dir = Path(__file__).resolve().parent
     qml_path = base_dir / "view" / "main.qml"
     window = RinUIWindow(str(qml_path))
-    window.setProperty("title", f"Seewo FastLogin")
+    window.setProperty("title", "Seewo FastLogin")
     return app.exec()
 
 

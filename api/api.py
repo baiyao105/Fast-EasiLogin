@@ -136,7 +136,7 @@ async def sso_login_user(
     async def _validate_token_after_login(tok: str):
         try:
             if await is_token_invalid(tok):
-                await _invalidate_token_redis(tok)
+                await _invalidate_token_cache(tok)
         except Exception:
             pass
 
@@ -162,7 +162,13 @@ async def sso_login_user(
         save_users(users_local)
 
     background_tasks.add_task(_update_user_profile, userid, token_info)
-    _LOGS.append({"time": time.strftime("%H:%M:%S", time.localtime()), "level": "INFO", "text": f"login success /user/agg/{userid}"})
+    _LOGS.append(
+        {
+            "time": time.strftime("%H:%M:%S", time.localtime()),
+            "level": "INFO",
+            "text": f"login success /user/agg/{userid}",
+        }
+    )
     return {"message": "success", "statusCode": "200"}
 
 
@@ -178,7 +184,7 @@ def _extract_pt_token(request: Request) -> str | None:
     return None
 
 
-async def _invalidate_token_redis(token: str) -> None:
+async def _invalidate_token_cache(token: str) -> None:
     r = get_cache()
     raw = await r.get(f"token_index:{token}")
     if raw:
@@ -233,7 +239,9 @@ async def save_user(body: SaveUserBody | AppSaveDataBody, background_tasks: Back
             user_id=(prev.user_id if prev else None),
         )
         save_users(users)
-        _LOGS.append({"time": time.strftime("%H:%M:%S", time.localtime()), "level": "INFO", "text": f"add user {body.userid}"})
+        _LOGS.append(
+            {"time": time.strftime("%H:%M:%S", time.localtime()), "level": "INFO", "text": f"add user {body.userid}"}
+        )
         return {"message": "success", "statusCode": "200"}
     uid = body.pt_userid
     uname = body.pt_username

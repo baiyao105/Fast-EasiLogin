@@ -72,10 +72,23 @@ def save_users(users: dict[str, UserRecord]) -> None:
 
 def load_appsettings() -> dict:
     ensure_data_dir()
+    default = {
+        "port": 24300,
+        "mitmproxy": {
+            "enable": True,
+            "listen_host": "127.0.0.1",
+            "listen_port": 24300,
+            "script": "proxy/mitm_local_id.py",
+        },
+    }
     if APPSETTINGS_FILE.exists():
         with APPSETTINGS_FILE.open("r", encoding="utf-8") as f:
-            return json.load(f)
-    default = {"port": 24300}
+            data = json.load(f)
+        if "port" not in data:
+            data["port"] = default["port"]
+        if "mitmproxy" not in data:
+            data["mitmproxy"] = default["mitmproxy"]
+        return data
     with APPSETTINGS_FILE.open("w", encoding="utf-8") as f:
         json.dump(default, f, ensure_ascii=False, indent=2)
     return default
@@ -118,7 +131,7 @@ def get_cache() -> AsyncCache:
     return _ACACHE
 
 
-async def redis_json_get(key: str) -> dict:
+async def cache_json_get(key: str) -> dict:
     r = get_cache()
     raw = await r.get(key)
     if not raw:
@@ -129,7 +142,7 @@ async def redis_json_get(key: str) -> dict:
         return {}
 
 
-async def redis_json_set(key: str, value: dict, ex: int | None = None) -> None:
+async def cache_json_set(key: str, value: dict, ex: int | None = None) -> None:
     r = get_cache()
     data = json.dumps(value, ensure_ascii=False)
     await r.set(key, data, ex=ex)
@@ -154,6 +167,7 @@ async def cache_count(prefix: str) -> int:
     cache = _CACHE
     if cache is None:
         return 0
+
     def _count() -> int:
         c = 0
         for k in cache.iterkeys():
@@ -164,4 +178,5 @@ async def cache_count(prefix: str) -> int:
             if s.startswith(prefix):
                 c += 1
         return c
+
     return await asyncio.to_thread(_count)
