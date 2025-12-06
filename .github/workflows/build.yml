@@ -1,0 +1,59 @@
+name: Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  windows-nuitka:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python & uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: 3.11
+          activate-environment: true
+          enable-cache: true
+          prune-cache: false
+
+      - name: Install project dependencies
+        run: |
+          uv sync
+          uv pip install nuitka -U
+
+      - name: Build executable with Nuitka
+        uses: Nuitka/Nuitka-Action@main
+        with:
+          nuitka-version: main
+          script-name: launcher.py
+          windows-icon-from-ico: ./shared/icon.ico
+          output-dir: build
+          mode: standalone
+          include-module: |
+            api
+            proxy
+          include-package: |
+            api
+            proxy
+          disable-console: true
+          assume-yes-for-downloads: yes
+          lto: yes
+          clang: yes
+          warn-unusual-code: yes
+          file-version: "1.0.0.0"
+          product-version: "1.0.0"
+          company-name: "baiyao105"
+          product-name: "Fast-EasiLogin"
+
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows
+          path: |
+            build/
+            build/launcher.dist/
+          include-hidden-files: true
