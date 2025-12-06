@@ -2,18 +2,21 @@
 dev = [
   "prek>=0.2.10",
   "pyright>=1.1.405",
+  "pyside6-stubs",
   "ruff>=0.14.8"
 ]
 
 [project]
 dependencies = [
+  "diskcache ~= 5.6.3",
   "fastapi ~= 0.123.10",
-  "uvicorn ~= 0.38.0",
-  "pydantic ~= 2.12.5",
-  "python-multipart ~= 0.0.20",
   "httpx[http2] ~= 0.28.1",
   "orjson ~= 3.11.4",
-  "diskcache ~= 5.6.3"
+  "pydantic ~= 2.12.5",
+  "pyside6",
+  "python-multipart ~= 0.0.20",
+  "rinui",
+  "uvicorn ~= 0.38.0"
 ]
 description = "Seewo Fast-Login"
 name = "seewo-fastlogin"
