@@ -3,11 +3,11 @@ import json
 import random
 
 from api.user_auth.auth_service import is_token_invalid
+from shared.constants import TOKEN_TTL
 from shared.storage import cache_iter_prefix, get_cache
 
 _INFLIGHT_USERS: set[str] = set()
 _INFLIGHT_LOCK = asyncio.Lock()
-TOKEN_TTL = 600.0
 
 
 def ttl_with_jitter(base: float) -> int:

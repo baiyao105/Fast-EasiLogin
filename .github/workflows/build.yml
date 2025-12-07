@@ -48,7 +48,6 @@ jobs:
           company-name: "baiyao105"
           product-name: "Fast-EasiLogin"
 
-
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:

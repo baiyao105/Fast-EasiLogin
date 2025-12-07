@@ -79,3 +79,15 @@ class AppSaveDataBody(BaseModel):
     pt_photourl: str | None = None
     pt_timestamp: int
     pt_session: str | None = None
+
+
+class MitmSettings(BaseModel):
+    enable: bool = True
+    listen_host: str = "127.0.0.1"
+    listen_port: int = 24300
+    script: str | None = "proxy/mitm_local_id.py"
+
+
+class AppSettings(BaseModel):
+    port: int = 24300
+    mitmproxy: MitmSettings = MitmSettings()

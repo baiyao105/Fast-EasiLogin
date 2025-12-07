@@ -1,18 +1,18 @@
 import contextlib
 import sys
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import UTC, datetime
 
 import uvicorn
 from loguru import logger
 
 from proxy.server import start_mitm
-from shared.storage import ensure_data_dir, load_appsettings
+from shared.basic_dir import LOGS_DIR, ensure_data_dirs
+from shared.storage import load_appsettings_model
 
 
 def _setup_logging() -> None:
-    ensure_data_dir()
-    logs_dir = Path(__file__).resolve().parent / "data" / "Logs"
+    ensure_data_dirs()
+    logs_dir = LOGS_DIR
     logs_dir.mkdir(parents=True, exist_ok=True)
     fmt = (
         "<blue>{time:YYYY-MM-DD HH:mm:ss}</blue> | "
@@ -22,7 +22,7 @@ def _setup_logging() -> None:
     )
     logger.remove()
     logger.add(sys.stdout, level="TRACE", format=fmt, enqueue=True, backtrace=True, diagnose=False)
-    ts = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d-%H-%M")
+    ts = datetime.now(UTC).astimezone().strftime("%Y-%m-%d-%H-%M")
     logfile = logs_dir / f"log_{ts}.log"
     logger.add(str(logfile), level="INFO", encoding="utf-8", format=fmt, enqueue=True, backtrace=True, diagnose=False)
     files = sorted(logs_dir.glob("log_*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
@@ -32,12 +32,11 @@ def _setup_logging() -> None:
 
 
 def main():
-    appsettings = load_appsettings()
+    s = load_appsettings_model()
     _setup_logging()
-    start_mitm(appsettings)
-    base_port = int(appsettings.get("port", 24300))
-    mitm = appsettings.get("mitmproxy") or {}
-    listen_port = int(mitm.get("listen_port", base_port))
+    start_mitm(s.model_dump())
+    base_port = int(s.port)
+    listen_port = int(s.mitmproxy.listen_port)
     srv_port = base_port + 1 if listen_port == base_port else base_port
     uvicorn.run(
         "api.main:app",

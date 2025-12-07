@@ -5,23 +5,41 @@ import contextlib
 import json
 import random
 import time
-from pathlib import Path
 
 from diskcache import Cache
 
-from .models import UserRecord
-
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-USER_FILE = DATA_DIR / "user_data.json"
-APPSETTINGS_FILE = DATA_DIR / "appsettings.json"
-USERS_CACHE: dict[str, UserRecord] | None = None
-USERS_CACHE_MTIME: float | None = None
-_CACHE: Cache | None = None
-_ACACHE: AsyncCache | None = None
+from .basic_dir import APPSETTINGS_FILE, CACHE_DIR, DATA_DIR, USER_FILE
+from .models import AppSettings, UserRecord
 
 
 def ensure_data_dir():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+
+class SharedContainer:
+    def __init__(self):
+        self.users_cache: dict[str, UserRecord] | None = None
+        self.users_cache_mtime: float | None = None
+        self.disk_cache: Cache | None = None
+        self.async_cache: AsyncCache | None = None
+
+    def get_async_cache(self) -> AsyncCache:
+        if self.async_cache is not None:
+            return self.async_cache
+        ensure_data_dir()
+        self.disk_cache = Cache(str(CACHE_DIR))
+        self.async_cache = AsyncCache(self.disk_cache)
+        return self.async_cache
+
+
+_CONTAINER_REF: list[SharedContainer] = []
+
+
+def _get_container() -> SharedContainer:
+    if _CONTAINER_REF:
+        return _CONTAINER_REF[0]
+    _CONTAINER_REF.append(SharedContainer())
+    return _CONTAINER_REF[0]
 
 
 def load_users() -> dict[str, UserRecord]:
@@ -29,13 +47,13 @@ def load_users() -> dict[str, UserRecord]:
     if not USER_FILE.exists():
         return {}
     mtime = USER_FILE.stat().st_mtime
-    global USERS_CACHE, USERS_CACHE_MTIME
-    if USERS_CACHE is not None and mtime == USERS_CACHE_MTIME:
-        return USERS_CACHE
+    cont = _get_container()
+    if cont.users_cache is not None and mtime == cont.users_cache_mtime:
+        return cont.users_cache
     with USER_FILE.open("r", encoding="utf-8") as f:
         data = json.load(f)
     raw = data.get("users", {})
-    USERS_CACHE = {
+    cont.users_cache = {
         k: UserRecord(
             userid=k,
             password=v.get("password", ""),
@@ -47,8 +65,8 @@ def load_users() -> dict[str, UserRecord]:
         )
         for k, v in raw.items()
     }
-    USERS_CACHE_MTIME = mtime
-    return USERS_CACHE
+    cont.users_cache_mtime = mtime
+    return cont.users_cache
 
 
 def save_users(users: dict[str, UserRecord]) -> None:
@@ -68,33 +86,28 @@ def save_users(users: dict[str, UserRecord]) -> None:
     }
     with USER_FILE.open("w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
-    global USERS_CACHE, USERS_CACHE_MTIME
-    USERS_CACHE = users.copy()
-    USERS_CACHE_MTIME = USER_FILE.stat().st_mtime
+    cont = _get_container()
+    cont.users_cache = users.copy()
+    cont.users_cache_mtime = USER_FILE.stat().st_mtime
 
 
-def load_appsettings() -> dict:
+def load_appsettings_model() -> AppSettings:
     ensure_data_dir()
-    default = {
-        "port": 24300,
-        "mitmproxy": {
-            "enable": True,
-            "listen_host": "127.0.0.1",
-            "listen_port": 24300,
-            "script": "proxy/mitm_local_id.py",
-        },
-    }
     if APPSETTINGS_FILE.exists():
         with APPSETTINGS_FILE.open("r", encoding="utf-8") as f:
             data = json.load(f)
-        if "port" not in data:
-            data["port"] = default["port"]
-        if "mitmproxy" not in data:
-            data["mitmproxy"] = default["mitmproxy"]
-        return data
+        try:
+            return AppSettings.model_validate(data)
+        except Exception:
+            return AppSettings()
+    s = AppSettings()
     with APPSETTINGS_FILE.open("w", encoding="utf-8") as f:
-        json.dump(default, f, ensure_ascii=False, indent=2)
-    return default
+        json.dump(s.model_dump(), f, ensure_ascii=False, indent=2)
+    return s
+
+
+def load_appsettings() -> dict:
+    return load_appsettings_model().model_dump()
 
 
 class AsyncCache:
@@ -150,15 +163,8 @@ class AsyncCache:
 
 
 def get_cache() -> AsyncCache:
-    global _CACHE, _ACACHE
-    if _ACACHE is not None:
-        return _ACACHE
-    ensure_data_dir()
-    cache_dir = DATA_DIR / "cache"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    _CACHE = Cache(str(cache_dir))
-    _ACACHE = AsyncCache(_CACHE)
-    return _ACACHE
+    cont = _get_container()
+    return cont.get_async_cache()
 
 
 async def cache_json_get(key: str) -> dict:
@@ -179,24 +185,25 @@ async def cache_json_set(key: str, value: dict, ex: int | None = None) -> None:
 
 
 async def clear_cache() -> None:
-    get_cache()
-    if _CACHE is not None:
-        await asyncio.to_thread(_CACHE.clear)
+    cont = _get_container()
+    r = cont.get_async_cache()
+    cache = cont.disk_cache
+    if cache is not None:
+        await asyncio.to_thread(cache.clear)
 
 
 async def close_cache() -> None:
-    global _CACHE, _ACACHE
-    if _CACHE is not None:
-        await asyncio.to_thread(_CACHE.close)
-    _ACACHE = None
-    _CACHE = None
+    cont = _get_container()
+    cache = cont.disk_cache
+    if cache is not None:
+        await asyncio.to_thread(cache.close)
+    cont.async_cache = None
+    cont.disk_cache = None
 
 
 async def cache_count(prefix: str) -> int:
-    get_cache()
-    cache = _CACHE
-    if cache is None:
-        return 0
+    cont = _get_container()
+    cache = cont.disk_cache or Cache(str(CACHE_DIR))
 
     def _count() -> int:
         c = 0
@@ -213,10 +220,8 @@ async def cache_count(prefix: str) -> int:
 
 
 async def cache_iter_prefix(prefix: str) -> list[str]:
-    get_cache()
-    cache = _CACHE
-    if cache is None:
-        return []
+    cont = _get_container()
+    cache = cont.disk_cache or Cache(str(CACHE_DIR))
 
     def _collect() -> list[str]:
         out: list[str] = []
@@ -259,9 +264,9 @@ async def save_users_async(users: dict[str, UserRecord], expected_mtime: float |
         tmp.replace(USER_FILE)
 
     await asyncio.to_thread(_write)
-    global USERS_CACHE, USERS_CACHE_MTIME
-    USERS_CACHE = users.copy()
-    USERS_CACHE_MTIME = USER_FILE.stat().st_mtime
+    cont = _get_container()
+    cont.users_cache = users.copy()
+    cont.users_cache_mtime = USER_FILE.stat().st_mtime
     return True
 
 

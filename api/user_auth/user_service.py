@@ -6,10 +6,12 @@ from typing import Any
 
 from loguru import logger
 
+from shared.constants import LOGIN_TTL, USERINFO_TTL
+from shared.http_client import request_with_retry
 from shared.models import AggregatedUserInfo, UserIdentityInfo, UserInfoExtendVo
 from shared.storage import get_cache, load_users
 
-from .auth_service import LOGIN_TTL, USERINFO_TTL, _request_with_retry, user_login
+from .auth_service import user_login
 
 
 async def fetch_user_info_with_token(token: str) -> dict[str, Any]:
@@ -24,7 +26,7 @@ async def fetch_user_info_with_token(token: str) -> dict[str, Any]:
     headers = {"X-APM-TraceId": "trace"}
     cookies = {"x-auth-app": "EasiNote5", "x-auth-token": token}
     try:
-        resp = await _request_with_retry("GET", url, headers=headers, cookies=cookies)
+        resp = await request_with_retry("GET", url, headers=headers, cookies=cookies)
         data = resp.json()
         result = data.get("data", {})
         ex = max(30, int(random.uniform(0.8, 1.2) * USERINFO_TTL))

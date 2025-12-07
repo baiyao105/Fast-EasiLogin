@@ -1,18 +1,8 @@
-import sys
-from pathlib import Path
+from mitmproxy import http
 
-from mitmproxy import http  # type: ignore
+from shared.storage import load_appsettings
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
-try:
-    from shared.storage import load_appsettings  # type: ignore
-
-    PORT = int(load_appsettings().get("port", 24301))
-except Exception:
-    PORT = 24301
+PORT = int(load_appsettings().get("port", 24301))
 
 
 class SeewoHijack:

@@ -12,6 +12,7 @@ from api.user_auth.user_service import (
     fetch_user_info_with_token,
     get_aggregated_user_info,
 )
+from shared.constants import TOKEN_MASK_MIN_LEN
 from shared.models import AppSaveDataBody, SaveUserBody, UserInfoRequest, UserRecord
 from shared.storage import (
     cache_iter_prefix,
@@ -23,8 +24,6 @@ from shared.storage import (
 from .state import _INFLIGHT_LOCK, _INFLIGHT_USERS, TOKEN_TTL, ttl_with_jitter
 
 router = APIRouter()
-
-TOKEN_MASK_MIN_LEN = 10
 
 
 @logger.catch

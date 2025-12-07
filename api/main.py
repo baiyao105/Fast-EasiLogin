@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.gzip import GZipMiddleware
@@ -8,10 +9,39 @@ from loguru import logger
 
 from api.gateway.router import router
 from api.gateway.state import token_renew_job
-from api.user_auth.auth_service import close_http_client, init_http_client
-from shared.storage import clear_cache, close_cache, load_appsettings
+from shared.basic_dir import ensure_data_dirs
+from shared.http_client import close_http_client, init_http_client
+from shared.storage import clear_cache, close_cache, load_appsettings_model
 
-app = FastAPI(default_response_class=ORJSONResponse)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    ensure_data_dirs()
+    await init_http_client()
+    await clear_cache()
+    with contextlib.suppress(Exception):
+        app.state.token_renew = asyncio.create_task(token_renew_job())
+    try:
+        s = load_appsettings_model()
+        base_port = int(s.port)
+        listen_port = int(s.mitmproxy.listen_port)
+        srv_port = base_port + 1 if listen_port == base_port else base_port
+        logger.success("服务启动成功: url=http://{}:{}", "127.0.0.1", srv_port)
+    except Exception as e:
+        logger.exception(f"服务启动失败: {e}")
+    try:
+        yield
+    finally:
+        await close_http_client()
+        await clear_cache()
+        await close_cache()
+        with contextlib.suppress(Exception):
+            t = getattr(app.state, "token_renew", None)
+            if t:
+                t.cancel()
+
+
+app = FastAPI(default_response_class=ORJSONResponse, lifespan=lifespan)
 
 
 @app.middleware("http")
@@ -26,31 +56,3 @@ async def add_global_headers(request, call_next):
 
 app.add_middleware(GZipMiddleware, minimum_size=500)
 app.include_router(router)
-
-
-@app.on_event("startup")
-async def _startup():
-    await init_http_client()
-    await clear_cache()
-    with contextlib.suppress(Exception):
-        app.state.token_renew = asyncio.create_task(token_renew_job())
-    try:
-        appsettings = load_appsettings()
-        base_port = int(appsettings.get("port", 24300))
-        mitm = appsettings.get("mitmproxy") or {}
-        listen_port = int(mitm.get("listen_port", base_port))
-        srv_port = base_port + 1 if listen_port == base_port else base_port
-        logger.success("服务启动成功: url=http://{}:{}", "127.0.0.1", srv_port)
-    except Exception:
-        logger.success("服务启动成功")
-
-
-@app.on_event("shutdown")
-async def _shutdown():
-    await close_http_client()
-    await clear_cache()
-    await close_cache()
-    with contextlib.suppress(Exception):
-        t = getattr(app.state, "token_renew", None)
-        if t:
-            t.cancel()
