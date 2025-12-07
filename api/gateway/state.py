@@ -5,12 +5,14 @@ import random
 from loguru import logger
 
 from api.user_auth.auth_service import check_token_status
-from shared.constants import TOKEN_MASK_MIN_LEN, TOKEN_TTL
-from shared.storage import cache_iter_prefix, get_cache, invalidate_token_cache
+from shared.constants import TOKEN_MASK_MIN_LEN
+from shared.storage import cache_iter_prefix, get_cache, invalidate_token_cache, load_appsettings_model
 
 _INFLIGHT_USERS: set[str] = set()
 _INFLIGHT_LOCK = asyncio.Lock()
 _INFLIGHT_TOKENS: set[str] = set()
+
+TOKEN_TTL = int(load_appsettings_model().token_ttl)
 
 
 def ttl_with_jitter(base: float) -> int:

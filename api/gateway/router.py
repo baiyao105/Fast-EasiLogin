@@ -81,29 +81,43 @@ async def sso_login_user(
     token_bytes = await r.get(f"token_by_user:{userid}")
     if token_bytes:
         token = token_bytes.decode("utf-8")
-        response.headers["Set-Cookie"] = f"pt_token={token};Domain=.seewo.com; Path=/; HttpOnly"
-
-        @logger.catch
-        async def _validate_token_and_invalidate(tok: str):
-            try:
-                logger.trace("开始检查token有效性")
-                if not await try_mark_inflight(tok):
-                    return
-                if await is_token_invalid(tok):
-                    await invalidate_token_cache(tok)
-                    logger.warning("token invalid: token={}", _mask(tok))
-            except Exception:
-                pass
-            finally:
-                await clear_inflight(tok)
-
-        background_tasks.add_task(_validate_token_and_invalidate, token)
-        return {"message": "success", "statusCode": "200"}
+        invalid = False
+        try:
+            if await try_mark_inflight(token):
+                invalid = await is_token_invalid(token, fast=True)
+        finally:
+            await clear_inflight(token)
+        if not invalid:
+            response.headers["Set-Cookie"] = f"pt_token={token};Domain=.seewo.com; Path=/; HttpOnly"
+            raw = await r.get(f"token_index:{token}")
+            if raw:
+                try:
+                    idx = json.loads(raw)
+                except Exception:
+                    idx = {}
+                uid = idx.get("uid")
+                await r.set(f"token_by_user:{userid}", token, ex=ttl_with_jitter(TOKEN_TTL))
+                if uid:
+                    await r.set(f"token_by_uid:{uid!s}", token, ex=ttl_with_jitter(TOKEN_TTL))
+                await r.set(
+                    f"token_index:{token}",
+                    raw.decode("utf-8") if isinstance(raw, bytes) else raw,
+                    ex=ttl_with_jitter(TOKEN_TTL),
+                )
+            return {"message": "success", "statusCode": "200"}
+        await invalidate_token_cache(token)
     users = load_users()
     record = users.get(userid)
     if not record:
         raise HTTPException(status_code=404, detail={"message": "user_not_found", "statusCode": "404"})
-    token_info = await user_login(userid, record.password)
+    try:
+        token_info = await user_login(userid, record.password)
+    except HTTPException as e:
+        if e.status_code == 504:  # noqa: PLR2004
+            logger.error("网络错误: 获取新token失败: userid={}", userid)
+        elif e.status_code == 401:  # noqa: PLR2004
+            logger.warning("登录失败: 账号或密码错误: userid={}", userid)
+        raise
     token = str(token_info.get("token") or "")
     response.headers["Set-Cookie"] = f"pt_token={token};Domain=.seewo.com; Path=/; HttpOnly"
     await r.set(f"token_by_user:{userid}", token, ex=ttl_with_jitter(TOKEN_TTL))
@@ -231,7 +245,7 @@ async def save_user(body: SaveUserBody | AppSaveDataBody, background_tasks: Back
     new_img = body.pt_photourl or (rec.head_img if rec else "")
     real_name = rec.user_realname if rec else uname
     candidate_token = str(body.pt_token or "")
-    if candidate_token and (not candidate_token.endswith("-offline")) and (not await is_token_invalid(candidate_token)):
+    if candidate_token and (not candidate_token.endswith("-offline")) and (not await is_token_invalid(candidate_token, fast=True)):
         fetched_once = await fetch_user_info_with_token(candidate_token)
         real_name = fetched_once.get("realName") or real_name
     key = uname

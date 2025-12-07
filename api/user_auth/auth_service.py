@@ -9,11 +9,12 @@ from fastapi import HTTPException
 from loguru import logger
 
 from shared.constants import LOGIN_TTL, TOKEN_INVALID_CODE
+from shared.errors import CircuitOpenError, RequestFailedError
 from shared.http_client import request_with_retry
 from shared.storage import get_cache
 
 
-async def _exchange_token(token: str) -> dict[str, Any]:
+async def _exchange_token(token: str, *, max_attempts: int = 3) -> dict[str, Any]:
     url = f"https://account.seewo.com/seewo-account/api/v1/auth/{token}/exchange"
     headers = {
         "X-APM-TraceId": secrets.token_hex(16),
@@ -29,7 +30,7 @@ async def _exchange_token(token: str) -> dict[str, Any]:
         "client_flags": "tabs",
         "pt_token": token,
     }
-    r = await request_with_retry("GET", url, headers=headers, cookies=cookies)
+    r = await request_with_retry("GET", url, headers=headers, cookies=cookies, max_attempts=max_attempts)
     try:
         data = r.json()
     except Exception:
@@ -39,10 +40,10 @@ async def _exchange_token(token: str) -> dict[str, Any]:
         return data
 
 
-async def _is_token_invalid(token: str) -> bool:
+async def _is_token_invalid(token: str, *, fast: bool = False) -> bool:
     try:
         logger.trace("开始检查token有效性")
-        data = await _exchange_token(token)
+        data = await _exchange_token(token, max_attempts=(1 if fast else 3))
         code = data.get("statusCode")
         invalid = code == TOKEN_INVALID_CODE
         if invalid:
@@ -56,7 +57,8 @@ async def _is_token_invalid(token: str) -> bool:
                     except Exception:
                         idx = {}
                     uid = idx.get("uid")
-                logger.warning("token疑似过期: 账号uid({}): {}", str(uid or "-"), str(code))
+                if uid:
+                    logger.warning("token疑似过期: 账号uid({}): {}", str(uid or "-"), str(code))
                 logger.trace("请求的返回信息: {}", str(data))
             except Exception:
                 pass
@@ -66,12 +68,12 @@ async def _is_token_invalid(token: str) -> bool:
         return invalid
 
 
-async def is_token_invalid(token: str) -> bool:
-    return await _is_token_invalid(token)
+async def is_token_invalid(token: str, *, fast: bool = False) -> bool:
+    return await _is_token_invalid(token, fast=fast)
 
 
-async def check_token_status(token: str) -> tuple[bool, int | None, dict[str, Any]]:
-    data = await _exchange_token(token)
+async def check_token_status(token: str, *, max_attempts: int = 3) -> tuple[bool, int | None, dict[str, Any]]:
+    data = await _exchange_token(token, max_attempts=max_attempts)
     code = data.get("statusCode") if isinstance(data, dict) else None
     invalid = code == TOKEN_INVALID_CODE
     return invalid, code, data if isinstance(data, dict) else {}
@@ -102,12 +104,16 @@ async def user_login(userid: str, password_plain: str) -> dict[str, Any]:
     try:
         resp = await request_with_retry("POST", url, headers=headers, json=payload)
         data = resp.json()
-
         token = data.get("data", {}).get("token")
+    except (RequestFailedError, CircuitOpenError) as err:
+        logger.error("网络错误: login请求失败: userid={} err={}", userid, str(err))
+        raise HTTPException(status_code=504, detail={"message": "network_error", "statusCode": "504"}) from err
     except Exception as err:
-        raise HTTPException(status_code=401, detail={"message": "token_invalid", "statusCode": "401"}) from err
+        logger.error("获取token异常: userid={} err={}", userid, str(err))
+        raise HTTPException(status_code=504, detail={"message": "network_error", "statusCode": "504"}) from err
 
     if not token or token.endswith("-offline") or (await _is_token_invalid(token)):
+        logger.warning("登录失败: token无效或过期: userid={}", userid)
         raise HTTPException(status_code=401, detail={"message": "token_invalid", "statusCode": "401"})
 
     u = data.get("data", {}).get("user", {})
