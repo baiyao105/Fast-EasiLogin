@@ -2,7 +2,10 @@ import asyncio
 import contextlib
 import hashlib
 import json
+import os
+import random
 import secrets
+import threading
 import time
 from typing import Any
 
@@ -12,32 +15,48 @@ from fastapi import HTTPException
 from shared.models import AggregatedUserInfo, UserIdentityInfo, UserInfoExtendVo
 from shared.storage import get_cache, load_users
 
-CLIENT_TIMEOUT = httpx.Timeout(connect=1.0, read=2.0, write=2.0, pool=5.0)
-CLIENT_LIMITS = httpx.Limits(max_keepalive_connections=20, max_connections=100)
+
+def _compute_limits() -> httpx.Limits:
+    cpu = max(1, int(os.cpu_count() or 1))
+    max_conns = max(100, cpu * 200)
+    keepalive = max(20, cpu * 50)
+    return httpx.Limits(max_keepalive_connections=keepalive, max_connections=max_conns)
+
+
+CLIENT_TIMEOUT = httpx.Timeout(connect=1.0, read=3.0, write=3.0, pool=10.0)
+CLIENT_LIMITS = _compute_limits()
 CLIENT_HTTP2 = True
 
 _CLIENT: httpx.AsyncClient | None = None
+_CLIENT_RC = 0
+_CLIENT_OPENED_AT: float | None = None
 LOGIN_TTL = 120.0
 USERINFO_TTL = 300.0
 _BREAKER: dict[str, dict[str, Any]] = {}
+_BR_LOCK = threading.Lock()
+TOKEN_INVALID_CODE = 40105
 _FAIL_THRESHOLD = 3
 _RESET_TIMEOUT = 10.0
 
 
 def _get_client() -> httpx.AsyncClient:
-    global _CLIENT
+    global _CLIENT, _CLIENT_OPENED_AT
     if _CLIENT is None:
         _CLIENT = httpx.AsyncClient(timeout=CLIENT_TIMEOUT, limits=CLIENT_LIMITS, http2=CLIENT_HTTP2)
+        _CLIENT_OPENED_AT = time.time()
     return _CLIENT
 
 
 async def init_http_client() -> None:
+    global _CLIENT_RC
     _get_client()
+    _CLIENT_RC += 1
 
 
 async def close_http_client() -> None:
-    global _CLIENT
-    if _CLIENT is not None:
+    global _CLIENT, _CLIENT_RC
+    _CLIENT_RC = max(0, _CLIENT_RC - 1)
+    if _CLIENT_RC == 0 and _CLIENT is not None:
         await _CLIENT.aclose()
         _CLIENT = None
 
@@ -50,11 +69,12 @@ def _host_from_url(url: str) -> str:
 
 
 def _breaker_state(host: str) -> dict[str, Any]:
-    st = _BREAKER.get(host)
-    if st is None:
-        st = {"fail": 0, "opened_at": 0.0, "open": False, "half": False}
-        _BREAKER[host] = st
-    return st
+    with _BR_LOCK:
+        st = _BREAKER.get(host)
+        if st is None:
+            st = {"fail": 0, "opened_at": 0.0, "open": False, "half": False}
+            _BREAKER[host] = st
+        return st
 
 
 def _should_block(host: str) -> bool:
@@ -63,24 +83,27 @@ def _should_block(host: str) -> bool:
         elapsed = time.time() - float(st["opened_at"] or 0.0)
         if elapsed < _RESET_TIMEOUT:
             return True
-        st["open"] = False
-        st["half"] = True
-        _BREAKER[host] = st
+        with _BR_LOCK:
+            st["open"] = False
+            st["half"] = True
+            _BREAKER[host] = st
     return False
 
 
 def _record_success(host: str) -> None:
-    _BREAKER[host] = {"fail": 0, "opened_at": 0.0, "open": False, "half": False}
+    with _BR_LOCK:
+        _BREAKER[host] = {"fail": 0, "opened_at": 0.0, "open": False, "half": False}
 
 
 def _record_failure(host: str) -> None:
     st = _breaker_state(host)
-    st["fail"] = int(st["fail"]) + 1
-    if st["fail"] >= _FAIL_THRESHOLD:
-        st["open"] = True
-        st["opened_at"] = time.time()
-        st["half"] = False
-    _BREAKER[host] = st
+    with _BR_LOCK:
+        st["fail"] = int(st["fail"]) + 1
+        if st["fail"] >= _FAIL_THRESHOLD:
+            st["open"] = True
+            st["opened_at"] = time.time()
+            st["half"] = False
+        _BREAKER[host] = st
 
 
 async def _request_with_retry(
@@ -142,7 +165,7 @@ async def _is_token_invalid(token: str) -> bool:
     try:
         data = await _exchange_token(token)
         code = data.get("statusCode")
-        return code == 40105
+        return code == TOKEN_INVALID_CODE
     except Exception:
         return False
 
@@ -166,10 +189,12 @@ async def fetch_user_info_with_token(token: str) -> dict[str, Any]:
         resp = await _request_with_retry("GET", url, headers=headers, cookies=cookies)
         data = resp.json()
         result = data.get("data", {})
-        await rc.set(f"userinfo:{token}", json.dumps(result, ensure_ascii=False), ex=int(USERINFO_TTL))
-        return result
+        ex = max(30, int(random.uniform(0.8, 1.2) * USERINFO_TTL))
+        await rc.set(f"userinfo:{token}", json.dumps(result, ensure_ascii=False), ex=ex)
     except Exception:
         return {}
+    else:
+        return result
 
 
 async def user_login(userid: str, password_plain: str) -> dict[str, Any]:
@@ -218,10 +243,12 @@ async def user_login(userid: str, password_plain: str) -> dict[str, Any]:
             "appCode": u.get("appCode"),
             "raw": data,
         }
-        await rc.set(f"login:{cache_key}", json.dumps(result, ensure_ascii=False), ex=int(LOGIN_TTL))
+        ex = max(30, int(random.uniform(0.8, 1.2) * LOGIN_TTL))
+        await rc.set(f"login:{cache_key}", json.dumps(result, ensure_ascii=False), ex=ex)
+    except Exception as err:
+        raise HTTPException(status_code=401, detail={"message": "token_invalid", "statusCode": "401"}) from err
+    else:
         return result
-    except Exception:
-        raise HTTPException(status_code=401, detail={"message": "token_invalid", "statusCode": "401"})
 
 
 async def get_user_info(userid: str, password_plain: str) -> dict[str, Any]:
@@ -301,7 +328,7 @@ async def get_aggregated_user_info(userid: str, password_plain: str, fields: lis
         else None,
     )
     full = agg.model_dump(exclude_none=True)
-    ttl = int(min(LOGIN_TTL, USERINFO_TTL))
+    ttl = max(30, int(random.uniform(0.8, 1.2) * min(LOGIN_TTL, USERINFO_TTL)))
     with contextlib.suppress(Exception):
         await rc.set(f"agg:{cache_key}", json.dumps(full, ensure_ascii=False), ex=ttl)
     return select_fields(full, fields)

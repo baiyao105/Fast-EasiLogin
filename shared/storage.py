@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
+import random
+import time
 from pathlib import Path
 
 from diskcache import Cache
@@ -97,25 +100,52 @@ def load_appsettings() -> dict:
 class AsyncCache:
     def __init__(self, cache: Cache):
         self._cache = cache
+        self._mem: dict[str, tuple[bytes | None, float]] = {}
+        self._miss: dict[str, float] = {}
+
+    def _ttl(self, base: int | float | None) -> float:
+        b = float(base or 60.0)
+        j = random.uniform(0.8, 1.2)
+        return max(5.0, b * j)
 
     async def get(self, key: str) -> bytes | None:
+        now = time.time()
+        m = self._miss.get(key)
+        if m and m > now:
+            return None
+        v = self._mem.get(key)
+        if v and v[1] > now:
+            return v[0]
         val = await asyncio.to_thread(self._cache.get, key)
         if val is None:
+            self._miss[key] = now + self._ttl(15)
             return None
         if isinstance(val, bytes):
-            return val
-        if isinstance(val, str):
-            return val.encode("utf-8")
-        try:
-            return json.dumps(val, ensure_ascii=False).encode("utf-8")
-        except Exception:
-            return str(val).encode("utf-8")
+            data = val
+        elif isinstance(val, str):
+            data = val.encode("utf-8")
+        else:
+            try:
+                data = json.dumps(val, ensure_ascii=False).encode("utf-8")
+            except Exception:
+                data = str(val).encode("utf-8")
+        self._mem[key] = (data, now + self._ttl(60))
+        return data
 
     async def set(self, key: str, value: str | bytes, ex: int | None = None) -> None:
+        now = time.time()
         data = value.encode("utf-8") if isinstance(value, str) else value
-        await asyncio.to_thread(self._cache.set, key, data, expire=ex)
+        ttl = self._ttl(ex)
+        self._mem[key] = (data, now + ttl)
+        with contextlib.suppress(Exception):
+            del self._miss[key]
+        await asyncio.to_thread(self._cache.set, key, data, expire=int(ttl))
 
     async def delete(self, key: str) -> None:
+        with contextlib.suppress(Exception):
+            del self._mem[key]
+        with contextlib.suppress(Exception):
+            del self._miss[key]
         await asyncio.to_thread(self._cache.delete, key)
 
 
@@ -180,3 +210,63 @@ async def cache_count(prefix: str) -> int:
         return c
 
     return await asyncio.to_thread(_count)
+
+
+async def cache_iter_prefix(prefix: str) -> list[str]:
+    get_cache()
+    cache = _CACHE
+    if cache is None:
+        return []
+
+    def _collect() -> list[str]:
+        out: list[str] = []
+        for k in cache.iterkeys():
+            try:
+                s = str(k)
+            except Exception:
+                s = ""
+            if s.startswith(prefix):
+                out.append(s)
+        return out
+
+    return await asyncio.to_thread(_collect)
+
+
+async def save_users_async(users: dict[str, UserRecord], expected_mtime: float | None = None) -> bool:
+    ensure_data_dir()
+    if USER_FILE.exists() and expected_mtime is not None:
+        cur = USER_FILE.stat().st_mtime
+        if cur != expected_mtime:
+            return False
+    payload = {
+        "users": {
+            u.userid: {
+                "password": u.password,
+                "user_nickname": u.user_nickname,
+                "user_realname": u.user_realname,
+                "head_img": u.head_img,
+                "pt_timestamp": u.pt_timestamp,
+                "user_id": u.user_id,
+            }
+            for u in users.values()
+        }
+    }
+
+    def _write() -> None:
+        tmp = USER_FILE.with_suffix(".json.tmp")
+        with tmp.open("w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        tmp.replace(USER_FILE)
+
+    await asyncio.to_thread(_write)
+    global USERS_CACHE, USERS_CACHE_MTIME
+    USERS_CACHE = users.copy()
+    USERS_CACHE_MTIME = USER_FILE.stat().st_mtime
+    return True
+
+
+def get_users_mtime() -> float | None:
+    ensure_data_dir()
+    if USER_FILE.exists():
+        return USER_FILE.stat().st_mtime
+    return None

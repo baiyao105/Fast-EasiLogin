@@ -1,5 +1,8 @@
 # import contextlib
+import asyncio
+import contextlib
 import json
+import random
 import time
 from typing import Any
 
@@ -8,7 +11,16 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import ORJSONResponse
 
 from shared.models import AppSaveDataBody, SaveUserBody, UserInfoRequest, UserRecord
-from shared.storage import cache_count, clear_cache, close_cache, get_cache, load_appsettings, load_users, save_users
+from shared.storage import (
+    cache_count,
+    cache_iter_prefix,
+    clear_cache,
+    close_cache,
+    get_cache,
+    load_appsettings,
+    load_users,
+    save_users_async,
+)
 
 from .core.user_manger import (
     close_http_client,
@@ -20,18 +32,36 @@ from .core.user_manger import (
 )
 
 app = FastAPI(default_response_class=ORJSONResponse)
-_REQ_TS: list[float] = []
+_REQ_BUCKETS: list[int] = [0] * 1440
+_REQ_LAST_MINUTE: int | None = None
 _LOGS: list[dict[str, str]] = []
+_INFLIGHT_USERS: set[str] = set()
+_INFLIGHT_LOCK = asyncio.Lock()
 
 TOKEN_TTL = 600.0
+
+
+def _ttl(base: float) -> int:
+    j = random.uniform(0.8, 1.2)
+    return max(5, int(base * j))
 
 
 @app.middleware("http")
 async def add_global_headers(request, call_next):
     now = time.time()
-    _REQ_TS.append(now)
-    cutoff = now - 24 * 3600
-    _REQ_TS[:] = [t for t in _REQ_TS if t >= cutoff]
+    minute = int(now // 60)
+    idx = minute % 1440
+    global _REQ_LAST_MINUTE
+    if _REQ_LAST_MINUTE is None:
+        _REQ_LAST_MINUTE = minute
+    if minute != _REQ_LAST_MINUTE:
+        if (minute - _REQ_LAST_MINUTE) >= 1440:
+            _REQ_BUCKETS[:] = [0] * 1440
+        else:
+            for m in range(_REQ_LAST_MINUTE + 1, minute + 1):
+                _REQ_BUCKETS[m % 1440] = 0
+        _REQ_LAST_MINUTE = minute
+    _REQ_BUCKETS[idx] += 1
     response = await call_next(request)
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Credentials"] = "true"
@@ -48,6 +78,8 @@ async def _startup():
     await init_http_client()
     await clear_cache()
     _LOGS.append({"time": time.strftime("%H:%M:%S", time.localtime()), "level": "INFO", "text": "service started"})
+    with contextlib.suppress(Exception):
+        app.state.token_renew = asyncio.create_task(_token_renew_job())
 
 
 @app.on_event("shutdown")
@@ -55,6 +87,12 @@ async def _shutdown():
     await close_http_client()
     await clear_cache()
     await close_cache()
+    try:
+        t = getattr(app.state, "token_renew", None)
+        if t:
+            t.cancel()
+    except Exception:
+        pass
 
 
 @app.get("/savedata")
@@ -126,12 +164,12 @@ async def sso_login_user(
     token_info = await user_login(userid, record.password)
     token = str(token_info.get("token") or "")
     response.headers["Set-Cookie"] = f"pt_token={token};Domain=.seewo.com; Path=/; HttpOnly"
-    await r.set(f"token_by_user:{userid}", token, ex=int(TOKEN_TTL))
+    await r.set(f"token_by_user:{userid}", token, ex=_ttl(TOKEN_TTL))
     uid = token_info.get("uid")
     if uid:
-        await r.set(f"token_by_uid:{uid!s}", token, ex=int(TOKEN_TTL))
+        await r.set(f"token_by_uid:{uid!s}", token, ex=_ttl(TOKEN_TTL))
     idx = {"userid": userid, "uid": uid}
-    await r.set(f"token_index:{token}", json.dumps(idx, ensure_ascii=False), ex=int(TOKEN_TTL))
+    await r.set(f"token_index:{token}", json.dumps(idx, ensure_ascii=False), ex=_ttl(TOKEN_TTL))
 
     async def _validate_token_after_login(tok: str):
         try:
@@ -143,23 +181,31 @@ async def sso_login_user(
     background_tasks.add_task(_validate_token_after_login, token)
 
     async def _update_user_profile(uid: str, info: dict[str, Any]):
-        users_local = load_users()
-        rec = users_local.get(uid)
-        if not rec:
-            return
-        fetched = await fetch_user_info_with_token(info.get("token") or "")
-        new_name = fetched.get("nickName") or info.get("user_name") or rec.user_nickname
-        new_img = fetched.get("photoUrl") or info.get("head_img") or rec.head_img
-        real_name = fetched.get("realName") or rec.user_realname or uid
-        users_local[uid] = UserRecord(
-            userid=uid,
-            password=rec.password,
-            user_nickname=new_name or "",
-            user_realname=real_name or uid,
-            head_img=new_img or "",
-            pt_timestamp=rec.pt_timestamp,
-        )
-        save_users(users_local)
+        async with _INFLIGHT_LOCK:
+            if uid in _INFLIGHT_USERS:
+                return
+            _INFLIGHT_USERS.add(uid)
+        try:
+            users_local = load_users()
+            rec = users_local.get(uid)
+            if not rec:
+                return
+            fetched = await fetch_user_info_with_token(info.get("token") or "")
+            new_name = fetched.get("nickName") or info.get("user_name") or rec.user_nickname
+            new_img = fetched.get("photoUrl") or info.get("head_img") or rec.head_img
+            real_name = fetched.get("realName") or rec.user_realname or uid
+            users_local[uid] = UserRecord(
+                userid=uid,
+                password=rec.password,
+                user_nickname=new_name or "",
+                user_realname=real_name or uid,
+                head_img=new_img or "",
+                pt_timestamp=rec.pt_timestamp,
+            )
+            await save_users_async(users_local, expected_mtime=None)
+        finally:
+            async with _INFLIGHT_LOCK:
+                _INFLIGHT_USERS.discard(uid)
 
     background_tasks.add_task(_update_user_profile, userid, token_info)
     _LOGS.append(
@@ -187,6 +233,7 @@ def _extract_pt_token(request: Request) -> str | None:
 async def _invalidate_token_cache(token: str) -> None:
     r = get_cache()
     raw = await r.get(f"token_index:{token}")
+    userid = None
     if raw:
         try:
             idx = json.loads(raw)
@@ -196,7 +243,20 @@ async def _invalidate_token_cache(token: str) -> None:
         uid = idx.get("uid")
         if uid:
             await r.delete(f"token_by_uid:{uid}")
+        try:
+            userid = idx.get("userid")
+        except Exception:
+            userid = None
     await r.delete(f"token_index:{token}")
+    if userid:
+        keys_login = await cache_iter_prefix(f"login:{userid}:")
+        for k in keys_login:
+            with contextlib.suppress(Exception):
+                await r.delete(k)
+        keys_agg = await cache_iter_prefix(f"agg:{userid}:")
+        for k in keys_agg:
+            with contextlib.suppress(Exception):
+                await r.delete(k)
 
 
 @app.get("/getData/SSOLOGOUT")
@@ -238,7 +298,7 @@ async def save_user(body: SaveUserBody | AppSaveDataBody, background_tasks: Back
             pt_timestamp=(prev.pt_timestamp if prev else None),
             user_id=(prev.user_id if prev else None),
         )
-        save_users(users)
+        await save_users_async(users, expected_mtime=None)
         _LOGS.append(
             {"time": time.strftime("%H:%M:%S", time.localtime()), "level": "INFO", "text": f"add user {body.userid}"}
         )
@@ -276,28 +336,37 @@ async def save_user(body: SaveUserBody | AppSaveDataBody, background_tasks: Back
         pt_timestamp=body.pt_timestamp,
         user_id=uid,
     )
-    save_users(users)
+    await save_users_async(users, expected_mtime=None)
     if body.pt_token:
 
         async def _update_user_profile(uid_local: str, uname_local: str, token_local: str):
-            users_local = load_users()
-            rec_local = users_local.get(uname_local) or users_local.get(uid_local)
-            if not rec_local:
-                return
-            fetched = await fetch_user_info_with_token(token_local)
-            new_name_local = fetched.get("nickName") or rec_local.user_nickname
-            new_img_local = fetched.get("photoUrl") or rec_local.head_img
-            real_name_local = fetched.get("realName") or rec_local.user_realname or uname_local
-            users_local[uname_local] = UserRecord(
-                userid=uname_local,
-                password=rec_local.password,
-                user_nickname=new_name_local or "",
-                user_realname=real_name_local or uname_local,
-                head_img=new_img_local or "",
-                pt_timestamp=rec_local.pt_timestamp,
-                user_id=uid_local,
-            )
-            save_users(users_local)
+            key_local = uname_local or uid_local
+            async with _INFLIGHT_LOCK:
+                if key_local in _INFLIGHT_USERS:
+                    return
+                _INFLIGHT_USERS.add(key_local)
+            try:
+                users_local = load_users()
+                rec_local = users_local.get(uname_local) or users_local.get(uid_local)
+                if not rec_local:
+                    return
+                fetched = await fetch_user_info_with_token(token_local)
+                new_name_local = fetched.get("nickName") or rec_local.user_nickname
+                new_img_local = fetched.get("photoUrl") or rec_local.head_img
+                real_name_local = fetched.get("realName") or rec_local.user_realname or uname_local
+                users_local[uname_local] = UserRecord(
+                    userid=uname_local,
+                    password=rec_local.password,
+                    user_nickname=new_name_local or "",
+                    user_realname=real_name_local or uname_local,
+                    head_img=new_img_local or "",
+                    pt_timestamp=rec_local.pt_timestamp,
+                    user_id=uid_local,
+                )
+                await save_users_async(users_local, expected_mtime=None)
+            finally:
+                async with _INFLIGHT_LOCK:
+                    _INFLIGHT_USERS.discard(key_local)
 
         candidate = str(body.pt_token)
         if (not candidate.endswith("-offline")) and (not await is_token_invalid(candidate)):
@@ -319,8 +388,13 @@ async def metrics():
     cached_logins = await cache_count("login:")
     active_tokens = await cache_count("token_by_user:")
     now = time.time()
-    requests_24h = sum(1 for t in _REQ_TS if t >= now - 24 * 3600)
-    requests_5m = sum(1 for t in _REQ_TS if t >= now - 300)
+    minute = int(now // 60)
+    idx = minute % 1440
+    b = _REQ_BUCKETS
+    requests_24h = sum(b)
+    requests_5m = 0
+    for i in range(5):
+        requests_5m += b[(idx - i) % 1440]
     data = {
         "service": {
             "running": True,
@@ -337,3 +411,43 @@ async def metrics():
         "logs": _LOGS[-20:],
     }
     return {"message": "success", "statusCode": "200", "data": data}
+
+
+async def _token_renew_job():
+    r = get_cache()
+    while True:
+        try:
+            tokens = await cache_iter_prefix("token_index:")
+            for k in tokens:
+                try:
+                    tok = k.split(":", 1)[1]
+                except Exception:
+                    tok = ""
+                if not tok:
+                    continue
+                try:
+                    if not await is_token_invalid(tok):
+                        raw = await r.get(f"token_index:{tok}")
+                        if raw:
+                            try:
+                                idx = json.loads(raw)
+                            except Exception:
+                                idx = {}
+                            userid = idx.get("userid")
+                            uid = idx.get("uid")
+                            if userid:
+                                await r.set(f"token_by_user:{userid}", tok, ex=_ttl(TOKEN_TTL))
+                            if uid:
+                                await r.set(f"token_by_uid:{uid}", tok, ex=_ttl(TOKEN_TTL))
+                            await r.set(
+                                f"token_index:{tok}",
+                                raw.decode("utf-8") if isinstance(raw, bytes) else raw,
+                                ex=_ttl(TOKEN_TTL),
+                            )
+                    else:
+                        await _invalidate_token_cache(tok)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        await asyncio.sleep(30)
