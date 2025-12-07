@@ -13,14 +13,15 @@ dependencies = [
   "httpx[http2] ~= 0.28.1",
   "loguru ~= 0.7.2",
   "mitmproxy ~= 11.0.2",
-  "orjson ~= 3.11.4",
+  "orjson ~= 3.11.5",
   "pydantic ~= 2.12.5",
   "pyside6",
   "python-multipart ~= 0.0.20",
+  "pywin32 >= 306; platform_system == 'Windows'",
   "rinui",
   "uvicorn ~= 0.38.0"
 ]
-description = "Seewo Fast-Login"
+description = "Fast-EasiLogin"
 name = "seewo-fastlogin"
 readme = "README.md"
 requires-python = ">=3.11"

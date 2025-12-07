@@ -92,3 +92,6 @@ class AppSettings(BaseModel):
     port: int = 24300
     mitmproxy: MitmSettings = MitmSettings()
     token_check_interval: int = 300
+    enable_eventlog: bool = True
+    auto_restart_on_crash: bool = True
+    restart_delay_seconds: int = 3

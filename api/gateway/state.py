@@ -86,10 +86,10 @@ async def token_renew_job(interval: int = 300) -> None:
                 except Exception as err:
                     errors += 1
                     masked = f"{tok[:6]}...{tok[-4:]}" if len(tok) > TOKEN_MASK_MIN_LEN else tok
-                    logger.error("token巡检异常: token={} err={}", masked, str(err))
+                    # logger.error("token巡检异常: token={} err={}", masked, str(err))
                 finally:
                     await clear_inflight(tok)
         except Exception:
             pass
-        logger.info("token巡检统计: 总数={} 更新={} 失效={} 错误={}", total, updated, invalid, errors)
+        # logger.info("token巡检统计: 总数={} 更新={} 失效={} 错误={}", total, updated, invalid, errors)
         await asyncio.sleep(interval)
