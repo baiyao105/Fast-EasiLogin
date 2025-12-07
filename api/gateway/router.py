@@ -81,6 +81,7 @@ async def sso_login_user(
         @logger.catch
         async def _validate_token_and_invalidate(tok: str):
             try:
+                logger.trace("开始检查token有效性")
                 if await is_token_invalid(tok):
                     idx_raw = await r.get(f"token_index:{tok}")
                     userid_local = None
@@ -116,8 +117,14 @@ async def sso_login_user(
         await r.set(f"token_by_uid:{uid!s}", token, ex=ttl_with_jitter(TOKEN_TTL))
     idx = {"userid": userid, "uid": uid}
     await r.set(f"token_index:{token}", json.dumps(idx, ensure_ascii=False), ex=ttl_with_jitter(TOKEN_TTL))
-    logger.info("account login: userid={}", userid)
-    logger.trace("login info: uid={} token={}", uid, _mask(token))
+    logger.info(
+        "账户被登录: usrid({}) : 账户信息({}, {}, {})",
+        userid,
+        str(token_info.get("nickName") or ""),
+        str(token_info.get("realName") or ""),
+        str(token_info.get("joinUnitTime")),
+    )
+    logger.trace("登录信息: uid={} token={}", uid, _mask(token))
 
     @logger.catch
     async def _validate_token_after_login(tok: str):
@@ -154,7 +161,11 @@ async def sso_login_user(
                 pt_timestamp=rec.pt_timestamp,
             )
             await save_users_async(users_local, expected_mtime=None)
-            logger.info("update account info: userid={}", uid)
+            logger.success(
+                "账户信息被更新: usrid({}) {}",
+                uid,
+                str({"nickName": new_name, "realName": real_name, "head_img": new_img}),
+            )
         finally:
             async with _INFLIGHT_LOCK:
                 _INFLIGHT_USERS.discard(uid)
@@ -287,7 +298,11 @@ async def save_user(body: SaveUserBody | AppSaveDataBody, background_tasks: Back
                     user_id=uid_local,
                 )
                 await save_users_async(users_local, expected_mtime=None)
-                logger.info("update account info: userid={}", uname_local)
+                logger.success(
+                    "账户信息被更新: usrid({}) {}",
+                    uname_local,
+                    str({"nickName": new_name_local, "realName": real_name_local, "head_img": new_img_local}),
+                )
             finally:
                 async with _INFLIGHT_LOCK:
                     _INFLIGHT_USERS.discard(key_local)

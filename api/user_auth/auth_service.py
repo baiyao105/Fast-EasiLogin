@@ -10,6 +10,7 @@ from typing import Any
 
 import httpx
 from fastapi import HTTPException
+from loguru import logger
 
 from shared.storage import get_cache
 
@@ -154,16 +155,35 @@ async def _exchange_token(token: str) -> dict[str, Any]:
     }
     r = await _request_with_retry("GET", url, headers=headers, cookies=cookies)
     try:
-        return r.json()
+        data = r.json()
+        logger.trace("请求的返回信息: {}", str(data))
+        return data
     except Exception:
         return {}
 
 
 async def _is_token_invalid(token: str) -> bool:
     try:
+        logger.trace("开始检查token有效性")
         data = await _exchange_token(token)
         code = data.get("statusCode")
-        return code == TOKEN_INVALID_CODE
+        if code == TOKEN_INVALID_CODE:
+            try:
+                r = get_cache()
+                raw = await r.get(f"token_index:{token}")
+                uid = None
+                if raw:
+                    try:
+                        idx = json.loads(raw)
+                    except Exception:
+                        idx = {}
+                    uid = idx.get("uid")
+                logger.warning("token疑似过期: 账号uid({}): {}", str(uid or "unknown"), str(code))
+                logger.trace("请求的返回信息: {}", str(data))
+            except Exception:
+                pass
+            return True
+        return False
     except Exception:
         return False
 
@@ -220,6 +240,13 @@ async def user_login(userid: str, password_plain: str) -> dict[str, Any]:
         }
         ex = max(30, int(random.uniform(0.8, 1.2) * LOGIN_TTL))
         await rc.set(f"login:{cache_key}", json.dumps(result, ensure_ascii=False), ex=ex)
+        logger.info(
+            "账户被登录: usrid({}) : 账户信息({}, {}, {})",
+            userid,
+            str(result.get("nickName") or ""),
+            str(result.get("realName") or ""),
+            str(result.get("joinUnitTime")),
+        )
     except Exception as err:
         raise HTTPException(status_code=401, detail={"message": "token_invalid", "statusCode": "401"}) from err
     else:

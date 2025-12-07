@@ -4,6 +4,8 @@ import json
 import random
 from typing import Any
 
+from loguru import logger
+
 from shared.models import AggregatedUserInfo, UserIdentityInfo, UserInfoExtendVo
 from shared.storage import get_cache, load_users
 
@@ -27,7 +29,11 @@ async def fetch_user_info_with_token(token: str) -> dict[str, Any]:
         result = data.get("data", {})
         ex = max(30, int(random.uniform(0.8, 1.2) * USERINFO_TTL))
         await rc.set(f"userinfo:{token}", json.dumps(result, ensure_ascii=False), ex=ex)
-    except Exception:
+        uid = result.get("uid")
+        logger.success("账户信息请求成功: {}", str(uid or "unknown"))
+        logger.trace("请求的返回信息: {}", str(result))
+    except Exception as err:
+        logger.error("账户信息请求失败: {} {}", "unknown", str(err))
         return {}
     else:
         return result

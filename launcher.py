@@ -14,11 +14,17 @@ def _setup_logging() -> None:
     ensure_data_dir()
     logs_dir = Path(__file__).resolve().parent / "data" / "Logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
+    fmt = (
+        "<blue>{time:YYYY-MM-DD HH:mm:ss}</blue> | "
+        "<level>{level: <7}</level> | "
+        "<magenta>{name}</magenta>:<cyan>{function}</cyan> | "
+        "{message}"
+    )
     logger.remove()
-    logger.add(sys.stdout, level="TRACE", enqueue=True, backtrace=True, diagnose=False)
+    logger.add(sys.stdout, level="TRACE", format=fmt, enqueue=True, backtrace=True, diagnose=False)
     ts = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d-%H-%M")
     logfile = logs_dir / f"log_{ts}.log"
-    logger.add(str(logfile), level="INFO", encoding="utf-8", enqueue=True, backtrace=True, diagnose=False)
+    logger.add(str(logfile), level="INFO", encoding="utf-8", format=fmt, enqueue=True, backtrace=True, diagnose=False)
     files = sorted(logs_dir.glob("log_*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
     for p in files[3:]:
         with contextlib.suppress(Exception):

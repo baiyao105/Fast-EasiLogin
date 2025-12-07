@@ -8,6 +8,8 @@ import threading
 from pathlib import Path
 from typing import Any
 
+from loguru import logger
+
 from shared.storage import load_appsettings
 
 
@@ -69,6 +71,7 @@ def _start_mitmdump(cfg: dict[str, Any]):
         stderr=subprocess.STDOUT,
     )
     atexit.register(lambda: proc.terminate())
+    logger.success("mitmproxy启动成功: mode=mitmdump listen={}:{}", listen_host, listen_port)
     return proc
 
 
@@ -106,6 +109,7 @@ def _start_inprocess(cfg: dict[str, Any]):
 
     th = threading.Thread(target=_run, name="mitmproxy-thread", daemon=True)
     th.start()
+    logger.success("mitmproxy启动成功: mode=inprocess listen={}:{} app_port={}", listen_host, listen_port, app_port)
     return th
 
 
