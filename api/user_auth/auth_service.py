@@ -56,7 +56,7 @@ async def _is_token_invalid(token: str) -> bool:
                     except Exception:
                         idx = {}
                     uid = idx.get("uid")
-                logger.warning("token疑似过期: 账号uid({}): {}", str(uid or "unknown"), str(code))
+                logger.warning("token疑似过期: 账号uid({}): {}", str(uid or "-"), str(code))
                 logger.trace("请求的返回信息: {}", str(data))
             except Exception:
                 pass
@@ -68,6 +68,13 @@ async def _is_token_invalid(token: str) -> bool:
 
 async def is_token_invalid(token: str) -> bool:
     return await _is_token_invalid(token)
+
+
+async def check_token_status(token: str) -> tuple[bool, int | None, dict[str, Any]]:
+    data = await _exchange_token(token)
+    code = data.get("statusCode") if isinstance(data, dict) else None
+    invalid = code == TOKEN_INVALID_CODE
+    return invalid, code, data if isinstance(data, dict) else {}
 
 
 async def user_login(userid: str, password_plain: str) -> dict[str, Any]:
@@ -123,11 +130,26 @@ async def user_login(userid: str, password_plain: str) -> dict[str, Any]:
     }
     ex = max(30, int(random.uniform(0.8, 1.2) * LOGIN_TTL))
     await rc.set(f"login:{cache_key}", json.dumps(result, ensure_ascii=False), ex=ex)
-    logger.info(
-        "账户被登录: usrid({}) : 账户信息({}, {}, {})",
-        userid,
-        str(result.get("nickName") or ""),
-        str(result.get("realName") or ""),
-        str(result.get("joinUnitTime")),
-    )
+    prev_raw = await rc.get(f"login:last:{userid}")
+    changed = True
+    if prev_raw:
+        try:
+            prev = json.loads(prev_raw)
+        except Exception:
+            prev = {}
+        fields = ["nickName", "realName", "joinUnitTime", "head_img", "phone"]
+        changed = any((prev.get(f) != result.get(f)) for f in fields)
+    await rc.set(f"login:last:{userid}", json.dumps(result, ensure_ascii=False), ex=max(3600, int(LOGIN_TTL)))
+    if changed:
+        logger.info(
+            "账户信息被更新: usrid({}) {}",
+            userid,
+            str(
+                {
+                    "nickName": result.get("nickName"),
+                    "realName": result.get("realName"),
+                    "head_img": result.get("head_img"),
+                }
+            ),
+        )
     return result

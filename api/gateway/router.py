@@ -1,4 +1,3 @@
-import contextlib
 import json
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response
@@ -15,13 +14,20 @@ from api.user_auth.user_service import (
 from shared.constants import TOKEN_MASK_MIN_LEN
 from shared.models import AppSaveDataBody, SaveUserBody, UserInfoRequest, UserRecord
 from shared.storage import (
-    cache_iter_prefix,
     get_cache,
+    invalidate_token_cache,
     load_users,
     save_users_async,
 )
 
-from .state import _INFLIGHT_LOCK, _INFLIGHT_USERS, TOKEN_TTL, ttl_with_jitter
+from .state import (
+    _INFLIGHT_LOCK,
+    _INFLIGHT_USERS,
+    TOKEN_TTL,
+    clear_inflight,
+    try_mark_inflight,
+    ttl_with_jitter,
+)
 
 router = APIRouter()
 
@@ -81,25 +87,15 @@ async def sso_login_user(
         async def _validate_token_and_invalidate(tok: str):
             try:
                 logger.trace("开始检查token有效性")
+                if not await try_mark_inflight(tok):
+                    return
                 if await is_token_invalid(tok):
-                    idx_raw = await r.get(f"token_index:{tok}")
-                    userid_local = None
-                    uid_local = None
-                    if idx_raw:
-                        try:
-                            idx = json.loads(idx_raw)
-                        except Exception:
-                            idx = {}
-                        uid_local = idx.get("uid")
-                        userid_local = idx.get("userid")
-                        uid_key = f"token_by_uid:{uid_local}" if uid_local else None
-                        await r.delete(f"token_by_user:{idx.get('userid')}")
-                        if uid_key:
-                            await r.delete(uid_key)
-                    await r.delete(f"token_index:{tok}")
-                    logger.warning("token invalid: userid={} uid={} token={}", userid_local, uid_local, _mask(tok))
+                    await invalidate_token_cache(tok)
+                    logger.warning("token invalid: token={}", _mask(tok))
             except Exception:
                 pass
+            finally:
+                await clear_inflight(tok)
 
         background_tasks.add_task(_validate_token_and_invalidate, token)
         return {"message": "success", "statusCode": "200"}
@@ -128,11 +124,15 @@ async def sso_login_user(
     @logger.catch
     async def _validate_token_after_login(tok: str):
         try:
+            if not await try_mark_inflight(tok):
+                return
             if await is_token_invalid(tok):
-                await _invalidate_token_cache(tok)
-                logger.warning("token invalid after login: userid={} uid={} token={}", userid, uid, _mask(tok))
+                await invalidate_token_cache(tok)
+                logger.warning("token invalid after login: token={}", _mask(tok))
         except Exception:
             pass
+        finally:
+            await clear_inflight(tok)
 
     background_tasks.add_task(_validate_token_after_login, token)
 
@@ -151,6 +151,11 @@ async def sso_login_user(
             new_name = fetched.get("nickName") or str(info.get("user_name") or rec.user_nickname)
             new_img = fetched.get("photoUrl") or str(info.get("head_img") or rec.head_img)
             real_name = fetched.get("realName") or rec.user_realname or uid
+            changed = (
+                (new_name or "") != (rec.user_nickname or "")
+                or (real_name or "") != (rec.user_realname or uid)
+                or (new_img or "") != (rec.head_img or "")
+            )
             users_local[uid] = UserRecord(
                 userid=uid,
                 password=rec.password,
@@ -160,11 +165,12 @@ async def sso_login_user(
                 pt_timestamp=rec.pt_timestamp,
             )
             await save_users_async(users_local, expected_mtime=None)
-            logger.success(
-                "账户信息被更新: usrid({}) {}",
-                uid,
-                str({"nickName": new_name, "realName": real_name, "head_img": new_img}),
-            )
+            if changed:
+                logger.success(
+                    "账户信息被更新: usrid({}) {}",
+                    uid,
+                    str({"nickName": new_name, "realName": real_name, "head_img": new_img}),
+                )
         finally:
             async with _INFLIGHT_LOCK:
                 _INFLIGHT_USERS.discard(uid)
@@ -184,35 +190,6 @@ def _extract_pt_token(request: Request) -> str | None:
         if p.startswith("pt_token="):
             return p.split("=", 1)[1]
     return None
-
-
-async def _invalidate_token_cache(token: str) -> None:
-    r = get_cache()
-    raw = await r.get(f"token_index:{token}")
-    userid = None
-    if raw:
-        try:
-            idx = json.loads(raw)
-        except Exception:
-            idx = {}
-        await r.delete(f"token_by_user:{idx.get('userid')}")
-        uid = idx.get("uid")
-        if uid:
-            await r.delete(f"token_by_uid:{uid}")
-        try:
-            userid = idx.get("userid")
-        except Exception:
-            userid = None
-    await r.delete(f"token_index:{token}")
-    if userid:
-        keys_login = await cache_iter_prefix(f"login:{userid}:")
-        for k in keys_login:
-            with contextlib.suppress(Exception):
-                await r.delete(k)
-        keys_agg = await cache_iter_prefix(f"agg:{userid}:")
-        for k in keys_agg:
-            with contextlib.suppress(Exception):
-                await r.delete(k)
 
 
 @logger.catch
@@ -287,6 +264,11 @@ async def save_user(body: SaveUserBody | AppSaveDataBody, background_tasks: Back
                 new_name_local = fetched.get("nickName") or rec_local.user_nickname
                 new_img_local = fetched.get("PhotoUrl") if False else fetched.get("photoUrl") or rec_local.head_img
                 real_name_local = fetched.get("realName") or rec_local.user_realname or uname_local
+                changed_local = (
+                    (new_name_local or "") != (rec_local.user_nickname or "")
+                    or (real_name_local or "") != (rec_local.user_realname or uname_local)
+                    or (new_img_local or "") != (rec_local.head_img or "")
+                )
                 users_local[uname_local] = UserRecord(
                     userid=uname_local,
                     password=rec_local.password,
@@ -297,11 +279,12 @@ async def save_user(body: SaveUserBody | AppSaveDataBody, background_tasks: Back
                     user_id=uid_local,
                 )
                 await save_users_async(users_local, expected_mtime=None)
-                logger.success(
-                    "账户信息被更新: usrid({}) {}",
-                    uname_local,
-                    str({"nickName": new_name_local, "realName": real_name_local, "head_img": new_img_local}),
-                )
+                if changed_local:
+                    logger.success(
+                        "账户信息被更新: usrid({}) {}",
+                        uname_local,
+                        str({"nickName": new_name_local, "realName": real_name_local, "head_img": new_img_local}),
+                    )
             finally:
                 async with _INFLIGHT_LOCK:
                     _INFLIGHT_USERS.discard(key_local)

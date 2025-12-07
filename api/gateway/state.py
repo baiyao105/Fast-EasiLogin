@@ -2,12 +2,15 @@ import asyncio
 import json
 import random
 
-from api.user_auth.auth_service import is_token_invalid
-from shared.constants import TOKEN_TTL
-from shared.storage import cache_iter_prefix, get_cache
+from loguru import logger
+
+from api.user_auth.auth_service import check_token_status
+from shared.constants import TOKEN_MASK_MIN_LEN, TOKEN_TTL
+from shared.storage import cache_iter_prefix, get_cache, invalidate_token_cache
 
 _INFLIGHT_USERS: set[str] = set()
 _INFLIGHT_LOCK = asyncio.Lock()
+_INFLIGHT_TOKENS: set[str] = set()
 
 
 def ttl_with_jitter(base: float) -> int:
@@ -15,11 +18,29 @@ def ttl_with_jitter(base: float) -> int:
     return max(5, int(base * j))
 
 
-async def token_renew_job() -> None:
+async def try_mark_inflight(key: str) -> bool:
+    async with _INFLIGHT_LOCK:
+        if key in _INFLIGHT_TOKENS:
+            return False
+        _INFLIGHT_TOKENS.add(key)
+        return True
+
+
+async def clear_inflight(key: str) -> None:
+    async with _INFLIGHT_LOCK:
+        _INFLIGHT_TOKENS.discard(key)
+
+
+async def token_renew_job(interval: int = 300) -> None:
     r = get_cache()
     while True:
+        total = 0
+        updated = 0
+        invalid = 0
+        errors = 0
         try:
             tokens = await cache_iter_prefix("token_index:")
+            total = len(tokens)
             for k in tokens:
                 try:
                     tok = k.split(":", 1)[1]
@@ -27,8 +48,11 @@ async def token_renew_job() -> None:
                     tok = ""
                 if not tok:
                     continue
+                if not await try_mark_inflight(tok):
+                    continue
                 try:
-                    if not await is_token_invalid(tok):
+                    invalid_flag, code, data = await check_token_status(tok)
+                    if not invalid_flag:
                         raw = await r.get(f"token_index:{tok}")
                         if raw:
                             try:
@@ -46,10 +70,26 @@ async def token_renew_job() -> None:
                                 raw.decode("utf-8") if isinstance(raw, bytes) else raw,
                                 ex=ttl_with_jitter(TOKEN_TTL),
                             )
+                            updated += 1
+                            masked = f"{tok[:6]}...{tok[-4:]}" if len(tok) > TOKEN_MASK_MIN_LEN else tok
+                            logger.debug("token续期: userid={} uid={} token={}", userid or "-", uid or "-", masked)
                     else:
-                        await r.delete(f"token_index:{tok}")
-                except Exception:
-                    pass
+                        masked = f"{tok[:6]}...{tok[-4:]}" if len(tok) > TOKEN_MASK_MIN_LEN else tok
+                        await invalidate_token_cache(tok)
+                        invalid += 1
+                        logger.warning(
+                            "token失效: code={} token={} data_status={}",
+                            code if code is not None else "-",
+                            masked,
+                            (data.get("statusCode") if isinstance(data, dict) else "-"),
+                        )
+                except Exception as err:
+                    errors += 1
+                    masked = f"{tok[:6]}...{tok[-4:]}" if len(tok) > TOKEN_MASK_MIN_LEN else tok
+                    logger.error("token巡检异常: token={} err={}", masked, str(err))
+                finally:
+                    await clear_inflight(tok)
         except Exception:
             pass
-        await asyncio.sleep(30)
+        logger.info("token巡检统计: 总数={} 更新={} 失效={} 错误={}", total, updated, invalid, errors)
+        await asyncio.sleep(interval)

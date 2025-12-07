@@ -91,3 +91,4 @@ class MitmSettings(BaseModel):
 class AppSettings(BaseModel):
     port: int = 24300
     mitmproxy: MitmSettings = MitmSettings()
+    token_check_interval: int = 300

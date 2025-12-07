@@ -20,7 +20,8 @@ async def lifespan(app: FastAPI):
     await init_http_client()
     await clear_cache()
     with contextlib.suppress(Exception):
-        app.state.token_renew = asyncio.create_task(token_renew_job())
+        s_local = load_appsettings_model()
+        app.state.token_renew = asyncio.create_task(token_renew_job(int(s_local.token_check_interval)))
     try:
         s = load_appsettings_model()
         base_port = int(s.port)

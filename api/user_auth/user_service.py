@@ -6,7 +6,7 @@ from typing import Any
 
 from loguru import logger
 
-from shared.constants import LOGIN_TTL, USERINFO_TTL
+from shared.constants import LOGIN_TTL, TOKEN_MASK_MIN_LEN, USERINFO_TTL
 from shared.http_client import request_with_retry
 from shared.models import AggregatedUserInfo, UserIdentityInfo, UserInfoExtendVo
 from shared.storage import get_cache, load_users
@@ -30,12 +30,28 @@ async def fetch_user_info_with_token(token: str) -> dict[str, Any]:
         data = resp.json()
         result = data.get("data", {})
         ex = max(30, int(random.uniform(0.8, 1.2) * USERINFO_TTL))
+        uid = str(result.get("uid") or "")
+        prev_raw = await rc.get(f"userinfo:last:{uid}") if uid else None
+        changed = False
+        if prev_raw:
+            try:
+                prev = json.loads(prev_raw)
+            except Exception:
+                prev = {}
+            changed = prev != result
         await rc.set(f"userinfo:{token}", json.dumps(result, ensure_ascii=False), ex=ex)
-        uid = result.get("uid")
-        logger.success("账户信息请求成功: {}", str(uid or "unknown"))
-        logger.trace("请求的返回信息: {}", str(result))
+        if uid:
+            await rc.set(
+                f"userinfo:last:{uid}",
+                json.dumps(result, ensure_ascii=False),
+                ex=max(3600, int(USERINFO_TTL)),
+            )
+        if changed:
+            logger.success("账户信息被更新: {}", uid or "-")
+            logger.trace("请求的返回信息: {}", str(result))
     except Exception as err:
-        logger.error("账户信息请求失败: {} {}", "unknown", str(err))
+        masked = f"{token[:6]}...{token[-4:]}" if len(token) > TOKEN_MASK_MIN_LEN else token
+        logger.error("账户信息请求失败: token={} err={}", masked or "-", str(err))
         return {}
     else:
         return result

@@ -201,6 +201,35 @@ async def close_cache() -> None:
     cont.disk_cache = None
 
 
+async def invalidate_token_cache(token: str) -> None:
+    r = get_cache()
+    raw = await r.get(f"token_index:{token}")
+    userid: str | None = None
+    if raw:
+        try:
+            idx = json.loads(raw)
+        except Exception:
+            idx = {}
+        await r.delete(f"token_by_user:{idx.get('userid')}")
+        uid = idx.get("uid")
+        if uid:
+            await r.delete(f"token_by_uid:{uid}")
+        try:
+            userid = idx.get("userid")
+        except Exception:
+            userid = None
+    await r.delete(f"token_index:{token}")
+    if userid:
+        keys_login = await cache_iter_prefix(f"login:{userid}:")
+        for k in keys_login:
+            with contextlib.suppress(Exception):
+                await r.delete(k)
+        keys_agg = await cache_iter_prefix(f"agg:{userid}:")
+        for k in keys_agg:
+            with contextlib.suppress(Exception):
+                await r.delete(k)
+
+
 async def cache_count(prefix: str) -> int:
     cont = _get_container()
     cache = cont.disk_cache or Cache(str(CACHE_DIR))
