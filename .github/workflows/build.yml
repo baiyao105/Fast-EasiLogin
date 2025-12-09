@@ -5,6 +5,8 @@ on:
 
 jobs:
   windows-nuitka:
+    permissions:
+      contents: read
     runs-on: windows-latest
 
     steps:
