@@ -245,7 +245,11 @@ async def save_user(body: SaveUserBody | AppSaveDataBody, background_tasks: Back
     new_img = body.pt_photourl or (rec.head_img if rec else "")
     real_name = rec.user_realname if rec else uname
     candidate_token = str(body.pt_token or "")
-    if candidate_token and (not candidate_token.endswith("-offline")) and (not await is_token_invalid(candidate_token, fast=True)):
+    if (
+        candidate_token
+        and (not candidate_token.endswith("-offline"))
+        and (not await is_token_invalid(candidate_token, fast=True))
+    ):
         fetched_once = await fetch_user_info_with_token(candidate_token)
         real_name = fetched_once.get("realName") or real_name
     key = uname

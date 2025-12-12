@@ -9,7 +9,7 @@ dev = [
 [project]
 dependencies = [
   "diskcache ~= 5.6.3",
-  "fastapi ~= 0.123.10",
+  "fastapi ~=0.124.2",
   "httpx[http2] ~= 0.28.1",
   "loguru ~= 0.7.2",
   "mitmproxy ~= 11.0.2",

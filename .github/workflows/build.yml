@@ -5,11 +5,13 @@ on:
 
 jobs:
   windows-nuitka:
+    permissions:
+      contents: read
     runs-on: windows-latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Python & uv
         uses: astral-sh/setup-uv@v7
@@ -49,7 +51,7 @@ jobs:
           product-name: "Fast-EasiLogin"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: Windows
           path: |
