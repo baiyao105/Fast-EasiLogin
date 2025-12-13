@@ -11,7 +11,7 @@ from loguru import logger
 
 from proxy.server import start_mitm
 from shared.basic_dir import LOGS_DIR, ensure_data_dirs
-from shared.storage import load_appsettings_model
+from shared.config.config import load_appsettings_model
 
 
 def _setup_logging() -> None:
@@ -104,10 +104,10 @@ def _install_global_handlers(report_event):
 def main():
     s = load_appsettings_model()
     _setup_logging()
-    report_event = _setup_win_eventlog(bool(getattr(s, "enable_eventlog", True)))
+    report_event = _setup_win_eventlog(bool(getattr(s, "Global", None) and s.Global.enable_eventlog))
     _install_global_handlers(report_event)
     start_mitm(s.model_dump())
-    base_port = int(s.port)
+    base_port = int(s.Global.port)
     listen_port = int(s.mitmproxy.listen_port)
     srv_port = base_port + 1 if listen_port == base_port else base_port
 
@@ -121,8 +121,8 @@ def main():
             log_config=None,
         )
 
-    if bool(getattr(s, "auto_restart_on_crash", True)):
-        delay = max(1, int(getattr(s, "restart_delay_seconds", 3)))
+    if bool(getattr(s, "Global", None) and s.Global.auto_restart_on_crash):
+        delay = max(1, int(s.Global.restart_delay_seconds))
         while True:
             try:
                 _run_once()

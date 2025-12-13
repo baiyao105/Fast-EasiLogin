@@ -10,12 +10,13 @@ from typing import Any
 
 from loguru import logger
 
-from shared.storage import load_appsettings
+from shared.config.config import load_appsettings
 
 
 def _resolve_app_port() -> int:
     s = load_appsettings()
-    base = int(s.get("port", 24300))
+    g = s.get("Global") or {}
+    base = int(g.get("port", 24300))
     m = s.get("mitmproxy") or {}
     listen = int(m.get("listen_port", base))
     return base + 1 if listen == base else base

@@ -1,8 +1,8 @@
 from mitmproxy import http
 
-from shared.storage import load_appsettings
+from shared.config.config import load_appsettings
 
-PORT = int(load_appsettings().get("port", 24301))
+PORT = int((load_appsettings().get("Global") or {}).get("port", 24301))
 
 
 class SeewoHijack:

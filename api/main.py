@@ -10,8 +10,8 @@ from loguru import logger
 from api.gateway.router import router
 from api.gateway.state import token_renew_job
 from shared.basic_dir import ensure_data_dirs
+from shared.config.config import clear_cache, close_cache, load_appsettings_model
 from shared.http_client import close_http_client, init_http_client
-from shared.storage import clear_cache, close_cache, load_appsettings_model
 
 
 @asynccontextmanager
@@ -21,10 +21,10 @@ async def lifespan(app: FastAPI):
     await clear_cache()
     with contextlib.suppress(Exception):
         s_local = load_appsettings_model()
-        app.state.token_renew = asyncio.create_task(token_renew_job(int(s_local.token_check_interval)))
+        app.state.token_renew = asyncio.create_task(token_renew_job(int(s_local.Global.token_check_interval)))
     try:
         s = load_appsettings_model()
-        base_port = int(s.port)
+        base_port = int(s.Global.port)
         listen_port = int(s.mitmproxy.listen_port)
         srv_port = base_port + 1 if listen_port == base_port else base_port
         logger.success("服务启动成功: url=http://{}:{}", "127.0.0.1", srv_port)

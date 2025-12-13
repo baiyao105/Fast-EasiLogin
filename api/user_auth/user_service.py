@@ -6,22 +6,16 @@ from typing import Any
 
 from loguru import logger
 
+from shared.config.config import get_cache, load_users
+from shared.config.models import AggregatedUserInfo, UserIdentityInfo, UserInfoExtendVo
 from shared.constants import LOGIN_TTL, TOKEN_MASK_MIN_LEN, USERINFO_TTL
 from shared.http_client import request_with_retry
-from shared.models import AggregatedUserInfo, UserIdentityInfo, UserInfoExtendVo
-from shared.storage import get_cache, load_users
 
 from .auth_service import user_login
 
 
 async def fetch_user_info_with_token(token: str) -> dict[str, Any]:
     rc = get_cache()
-    cached = await rc.get(f"userinfo:{token}")
-    if cached:
-        try:
-            return json.loads(cached)
-        except Exception:
-            pass
     url = "https://edu.seewo.com/api/v2/user/info"
     headers = {"X-APM-TraceId": "trace"}
     cookies = {"x-auth-app": "EasiNote5", "x-auth-token": token}
@@ -29,7 +23,6 @@ async def fetch_user_info_with_token(token: str) -> dict[str, Any]:
         resp = await request_with_retry("GET", url, headers=headers, cookies=cookies)
         data = resp.json()
         result = data.get("data", {})
-        ex = max(30, int(random.uniform(0.8, 1.2) * USERINFO_TTL))
         uid = str(result.get("uid") or "")
         prev_raw = await rc.get(f"userinfo:last:{uid}") if uid else None
         changed = False
@@ -39,7 +32,6 @@ async def fetch_user_info_with_token(token: str) -> dict[str, Any]:
             except Exception:
                 prev = {}
             changed = prev != result
-        await rc.set(f"userinfo:{token}", json.dumps(result, ensure_ascii=False), ex=ex)
         if uid:
             await rc.set(
                 f"userinfo:last:{uid}",
@@ -68,7 +60,8 @@ async def get_user_info_by_userid(userid: str) -> dict[str, Any]:
     record = users.get(userid)
     if not record:
         return {}
-    return await get_user_info(userid, record.password)
+    # 按照规范: 登录仅使用 phone
+    return await get_user_info(record.phone or userid, record.password)
 
 
 def select_fields(data: dict[str, Any], fields: list[str] | None) -> dict[str, Any]:
@@ -89,7 +82,11 @@ async def get_aggregated_user_info(userid: str, password_plain: str, fields: lis
         except Exception:
             pass
 
-    login = await user_login(userid, password_plain)
+    # userid 为 user_id; 登录仅使用 phone, 需要映射
+    users = load_users()
+    rec = users.get(userid)
+    phone_for_login = rec.phone if rec else userid
+    login = await user_login(phone_for_login, password_plain)
     token = login.get("token")
     info = await fetch_user_info_with_token(token) if token else {}
     ext = info.get("userInfoExtendVo") or {}

@@ -1,14 +1,33 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, field_validator
+
+CURRENT_SCHEMA_VERSION = 1
 
 
 class UserRecord(BaseModel):
     userid: str
+    phone: str = ""
     password: str
     user_nickname: str
     user_realname: str | None = None
     head_img: str
     pt_timestamp: int | None = None
     user_id: str | None = None
+
+    @field_validator("phone", mode="before")
+    def _validate_phone(cls, v: str | None) -> str:
+        try:
+            s = str(v or "").strip()
+        except Exception:
+            return ""
+        if not s:
+            return ""
+        cn_len = 11
+        e164_min = 6
+        e164_max = 15
+        if s.startswith("+"):
+            rest = s[1:]
+            return s if rest.isdigit() and e164_min <= len(rest) <= e164_max else ""
+        return s if s.isdigit() and len(s) == cn_len and s.startswith("1") else ""
 
 
 class SaveUserBody(BaseModel):
@@ -88,11 +107,18 @@ class MitmSettings(BaseModel):
     script: str | None = "proxy/mitm_local_id.py"
 
 
-class AppSettings(BaseModel):
+class GlobalSettings(BaseModel):
     port: int = 24301
-    mitmproxy: MitmSettings = MitmSettings()
     token_check_interval: int = 300
     token_ttl: int = 60
     enable_eventlog: bool = True
     auto_restart_on_crash: bool = True
     restart_delay_seconds: int = 3
+    cache_max_entries: int = 512
+
+
+class AppSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    Global: GlobalSettings = GlobalSettings()
+    mitmproxy: MitmSettings = MitmSettings()
+    schema_version: int = CURRENT_SCHEMA_VERSION
