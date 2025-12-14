@@ -78,12 +78,18 @@ async def sso_login_user(
         token_info = await user_login(login_account, record.password)
     except HTTPException as e:
         if e.status_code == 504:  # noqa: PLR2004
-            logger.error("网络错误: 获取新token失败: account={}", login_account)
+            logger.error(f"网络错误: 获取新token失败: account={login_account} {e}")
         elif e.status_code == 401:  # noqa: PLR2004
-            logger.warning("登录失败: 账号或密码错误: account={}", login_account)
+            logger.warning(f"登录失败: 账号或密码错误: account={login_account} {e}")
         raise
     token = str(token_info.get("token") or "")
-    response.headers["Set-Cookie"] = f"pt_token={token};Domain=.seewo.com; Path=/; HttpOnly"
+    response.set_cookie(
+        key="pt_token",
+        value=token,
+        domain=".seewo.com",
+        path="/",
+        httponly=True,
+    )
     uid = token_info.get("uid")
     logger.info(
         "账户被登录: usrid({}) : 账户信息({}, {}, {})",

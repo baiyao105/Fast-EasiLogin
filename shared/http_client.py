@@ -13,7 +13,7 @@ from .errors import CircuitOpenError, RequestFailedError
 def _compute_limits() -> httpx.Limits:
     cpu = max(1, int(os.cpu_count() or 1))
     max_conns = max(100, cpu * 200)
-    keepalive = max(20, cpu * 50)
+    keepalive = max(50, max_conns // 2)
     return httpx.Limits(max_keepalive_connections=keepalive, max_connections=max_conns)
 
 

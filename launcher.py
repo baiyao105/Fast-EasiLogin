@@ -68,10 +68,23 @@ def _setup_win_eventlog(enable: bool):
             win32evtlogutil.ReportEvent(app_name, 1000, 0, et, [text])
 
     def _sink(msg):
-        rec = msg.record
-        lvl = rec["level"].name
-        text = msg.render()
-        if lvl in ("ERROR", "CRITICAL") or rec.get("exception"):
+        try:
+            rec = msg.record
+        except Exception:
+            with contextlib.suppress(Exception):
+                _report_event(str(msg))
+            return
+        lvl_obj = rec.get("level")
+        lvl_no = getattr(lvl_obj, "no", logger.level("INFO").no)
+        text = rec.get("message", "")
+        exc = rec.get("exception")
+        if exc:
+            with contextlib.suppress(Exception):
+                typ = getattr(exc, "type", None)
+                val = getattr(exc, "value", None)
+                if typ or val:
+                    text = f"{text}\n{getattr(typ, '__name__', typ)}: {val}"
+        if lvl_no >= logger.level("ERROR").no:
             _report_event(text)
 
     with contextlib.suppress(Exception):

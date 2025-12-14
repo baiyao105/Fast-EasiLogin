@@ -95,10 +95,10 @@ async def user_login(userid: str, password_plain: str) -> dict[str, Any]:
         data = resp.json()
         token = data.get("data", {}).get("token")
     except (RequestFailedError, CircuitOpenError) as err:
-        logger.error("网络错误: login请求失败: userid={} err={}", userid, str(err))
+        logger.error(f"网络错误: login请求失败: userid={userid} {err}")
         raise HTTPException(status_code=504, detail={"message": "network_error", "statusCode": "504"}) from err
     except Exception as err:
-        logger.error("获取token异常: userid={} err={}", userid, str(err))
+        logger.error(f"获取token异常: userid={userid} {err}")
         raise HTTPException(status_code=504, detail={"message": "network_error", "statusCode": "504"}) from err
 
     if not token:
