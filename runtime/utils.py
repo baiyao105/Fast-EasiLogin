@@ -6,9 +6,8 @@ import logging
 import os
 import platform
 import threading
-from typing import Any, cast
+from typing import Any
 
-import uvicorn
 from loguru import logger
 
 _STATE: dict[str, Any] = {
@@ -34,18 +33,20 @@ class InterceptHandler(logging.Handler):
         while frame and frame.f_code.co_filename == logging.__file__:
             frame = frame.f_back
             depth += 1
-
         logger.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
 
 
-def _bridge_uvicorn_logs(level: str = "INFO") -> None:
+def bridge_uvicorn_logs(level: str = "INFO", *, access_log: bool = False) -> None:
     logging.getLogger().handlers = [InterceptHandler()]
     for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
         lg = logging.getLogger(name)
         lg.handlers = [InterceptHandler()]
         lg.propagate = False
         with contextlib.suppress(Exception):
-            lg.setLevel(getattr(logging, (level or "INFO").upper(), logging.INFO))
+            if access_log:
+                lg.setLevel(getattr(logging, (level or "INFO").upper(), logging.INFO))
+            else:
+                lg.setLevel(logging.CRITICAL)
 
 
 def ensure_single_instance(name: str = r"Local\SeewoFastLoginSingleInstance") -> bool:
@@ -67,7 +68,7 @@ def ensure_single_instance(name: str = r"Local\SeewoFastLoginSingleInstance") ->
     return True
 
 
-def init_runtime(settings: Any, *, log_level: str = "INFO", access_log: bool = False) -> bool:
+def prepare_api_runtime(settings: Any, *, log_level: str = "INFO", access_log: bool = False) -> bool:
     ok = ensure_single_instance()
     if not ok:
         logger.warning("已有运行实例")
@@ -90,34 +91,17 @@ def init_runtime(settings: Any, *, log_level: str = "INFO", access_log: bool = F
     except Exception as err:
         logger.exception("初始化运行时失败: {}", str(err))
         return False
-    _bridge_uvicorn_logs(log_level)
+    bridge_uvicorn_logs(log_level, access_log=bool(access_log))
     return True
 
 
-def start() -> None:
+def get_api_port() -> int:
     cfg = _STATE.get("cfg") or {}
-    port = int(cfg.get("port") or 0)
-    if not port:
-        logger.error("未配置端口")
-        return
-    access_log = bool(cfg.get("access_log"))
-    server = uvicorn.Server(
-        uvicorn.Config(
-            "api.main:app",
-            host="0.0.0.0",
-            port=port,
-            server_header=False,
-            access_log=access_log,
-            log_config=None,
-        )
-    )
-    with contextlib.suppress(Exception):
-        cast(Any, server).install_signal_handlers = False
+    return int(cfg.get("port") or 0)
+
+
+def register_server(server: Any) -> None:
     _STATE["server"] = server
-    try:
-        server.run()
-    finally:
-        _STATE["server"] = None
 
 
 def stop(status: int = 0, *, force: bool = False) -> None:
@@ -130,3 +114,4 @@ def stop(status: int = 0, *, force: bool = False) -> None:
             srv.force_exit = True
     if force:
         os._exit(status)
+
