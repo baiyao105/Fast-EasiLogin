@@ -1,8 +1,8 @@
 [dependency-groups]
 dev = [
   "prek>=0.2.10",
-  "pytest-codspeed>=4.2.0",
   "pyright>=1.1.405",
+  "pytest-codspeed>=4.2.0",
   "ruff>=0.14.8"
 ]
 
