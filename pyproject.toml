@@ -17,7 +17,7 @@ dependencies = [
   "pydantic ~= 2.12.5",
   "python-multipart ~= 0.0.20",
   "pywin32 >= 306; platform_system == 'Windows'",
-  "tomlkit ~= 0.13.2",
+  "tomlkit ~=0.14.0",
   "uvicorn ~= 0.38.0"
 ]
 description = "Fast-EasiLogin"
