@@ -114,4 +114,3 @@ def stop(status: int = 0, *, force: bool = False) -> None:
             srv.force_exit = True
     if force:
         os._exit(status)
-

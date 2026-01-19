@@ -48,10 +48,12 @@ def run_service(log_level: str = "INFO", access_log: bool = False, *, with_webui
                 with contextlib.suppress(Exception):
                     cast(Any, server).install_signal_handlers = False
                 register_server(server)
+
                 def _stop_now(srv=server):
                     with contextlib.suppress(Exception):
                         srv.should_exit = True
                         srv.force_exit = True
+
                 install_signal_handlers(on_stop=_stop_now)
                 server.run()
             except Exception as err:
@@ -83,10 +85,12 @@ def run_service(log_level: str = "INFO", access_log: bool = False, *, with_webui
         with contextlib.suppress(Exception):
             cast(Any, server).install_signal_handlers = False
         register_server(server)
+
         def _stop_now(srv=server):
             with contextlib.suppress(Exception):
                 srv.should_exit = True
                 srv.force_exit = True
+
         install_signal_handlers(on_stop=_stop_now)
         server.run()
 
