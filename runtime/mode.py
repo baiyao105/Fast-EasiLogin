@@ -12,19 +12,20 @@ class RunMode:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(add_help=True)
-    p.add_argument("--services", choices=["install", "uninstall"], default=None)
+    p = argparse.ArgumentParser()
+    p.add_argument("--services", choices=["install", "uninstall"])
     p.add_argument("--log-level", default="INFO")
-    p.add_argument("--log-access", choices=["on", "off"], default="off")
+    p.add_argument("--access-log", action="store_true")
     p.add_argument("--service-mode", action="store_true")
     return p
 
 
 def parse_mode(argv: list[str] | None = None) -> RunMode:
     args = build_parser().parse_args(argv)
-    api = True
-    console = not bool(getattr(args, "service_mode", False))
-    services = getattr(args, "services", None)
-    log_level = str(getattr(args, "log_level", "INFO") or "INFO")
-    access_log = bool(getattr(args, "log_access", "off") == "on")
-    return RunMode(api=api, console=console, services=services, log_level=log_level, access_log=access_log)
+    return RunMode(
+        api=True,
+        console=not args.service_mode,
+        services=args.services,
+        log_level=args.log_level.upper(),
+        access_log=args.access_log,
+    )

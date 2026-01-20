@@ -101,7 +101,7 @@ class AppSaveDataBody(BaseModel):
 
 
 class MitmSettings(BaseModel):
-    enable: bool = True
+    enable: bool = False
     listen_host: str = "127.0.0.1"
     listen_port: int = 24300
     script: str | None = "proxy/mitm_local_id.py"

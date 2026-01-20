@@ -7,8 +7,16 @@ from loguru import logger
 
 from shared.config.config import load_appsettings_model
 
-from .process import install_global_handlers, install_signal_handlers, setup_logging, setup_win_eventlog
-from .utils import get_api_port, prepare_api_runtime, register_server, stop
+from .utils import (
+    get_api_port,
+    install_global_handlers,
+    install_signal_handlers,
+    prepare_api_runtime,
+    register_server,
+    setup_logging,
+    setup_win_eventlog,
+    stop,
+)
 
 
 def run_service(log_level: str = "INFO", access_log: bool = False, *, with_webui: bool = True) -> None:
