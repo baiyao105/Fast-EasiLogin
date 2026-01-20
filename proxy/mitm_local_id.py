@@ -1,6 +1,6 @@
 from mitmproxy import http
 
-from shared.config.config import load_appsettings
+from shared.store.config import load_appsettings
 
 PORT = int((load_appsettings().get("Global") or {}).get("port", 24301))
 

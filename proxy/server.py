@@ -10,7 +10,7 @@ from typing import Any
 
 from loguru import logger
 
-from shared.config.config import load_appsettings
+from shared.store.config import load_appsettings
 
 
 def _resolve_app_port() -> int:

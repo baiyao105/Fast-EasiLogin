@@ -6,10 +6,10 @@ from typing import Any
 
 from loguru import logger
 
-from shared.config.config import get_cache, load_users
-from shared.config.models import AggregatedUserInfo, UserIdentityInfo, UserInfoExtendVo
 from shared.constants import LOGIN_TTL, TOKEN_MASK_MIN_LEN, USERINFO_TTL
 from shared.http_client import request_with_retry
+from shared.store.config import get_cache, load_users
+from shared.store.models import AggregatedUserInfo, UserIdentityInfo, UserInfoExtendVo
 
 from .auth_service import user_login
 

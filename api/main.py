@@ -1,6 +1,6 @@
 import asyncio
 import contextlib
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
 from fastapi.middleware.gzip import GZipMiddleware
@@ -9,9 +9,10 @@ from loguru import logger
 
 from api.gateway.router import router
 from api.gateway.state import token_renew_job
+from runtime.utils import stop
 from shared.basic_dir import ensure_data_dirs
-from shared.config.config import clear_cache, close_cache, load_appsettings_model
 from shared.http_client import close_http_client, init_http_client
+from shared.store.config import clear_cache, close_cache, load_appsettings_model
 
 
 @asynccontextmanager
@@ -32,14 +33,18 @@ async def lifespan(app: FastAPI):
         logger.exception(f"服务启动失败: {e}")
     try:
         yield
+        stop()
+    except asyncio.CancelledError:
+        pass
     finally:
         await close_http_client()
         await clear_cache()
         await close_cache()
-        with contextlib.suppress(Exception):
-            t = getattr(app.state, "token_renew", None)
-            if t:
-                t.cancel()
+        t = getattr(app.state, "token_renew", None)
+        if t:
+            t.cancel()
+            with suppress(asyncio.CancelledError):
+                await t
 
 
 app = FastAPI(default_response_class=ORJSONResponse, lifespan=lifespan)

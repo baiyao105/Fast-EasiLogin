@@ -13,8 +13,8 @@ import tomlkit
 import yaml
 from loguru import logger
 
-from shared.basic_dir import APPSETTINGS_FILE, APPSETTINGS_TOML, DATA_DIR, USER_DATA_DIR
-from shared.config.models import CURRENT_SCHEMA_VERSION, AppSettings, UserRecord
+from shared.basic_dir import APPSETTINGS_FILE, APPSETTINGS_TOML, DATA_DIR, USER_DATA_DIR, fmt_diff
+from shared.store.models import CURRENT_SCHEMA_VERSION, AppSettings, UserRecord
 
 toml_dumps = tomlkit.dumps
 
@@ -300,14 +300,13 @@ def load_users() -> dict[str, UserRecord]:
             data = {}
         info = data.get("user_info") or {}
         users[uid] = UserRecord(
-            userid=uid,
+            user_id=uid,
             phone=str(info.get("phone") or ""),
             password=str(info.get("password") or ""),
             user_nickname=str(info.get("user_nickname") or info.get("user_name") or ""),
             user_realname=(info.get("user_realname") or None),
             head_img=str(info.get("head_img") or ""),
             pt_timestamp=(info.get("pt_timestamp") or None),
-            user_id=uid,
         )
 
     cont.users_cache = users
@@ -322,7 +321,7 @@ def save_users(users: dict[str, UserRecord]) -> None:
     base.mkdir(parents=True, exist_ok=True)
 
     def _dump(u: UserRecord) -> None:
-        uid = u.user_id or u.userid
+        uid = u.user_id
         if not uid:
             return
         d = base / uid
@@ -365,7 +364,9 @@ def save_users(users: dict[str, UserRecord]) -> None:
                     for f in fields
                     if str(prev_info.get(f) or "") != str(payload["user_info"].get(f) or "")
                 }
-                logger.success("更新账户配置: user_id={} nickname={} changes={}", uid, u.user_nickname or "-", diff)
+                logger.success(
+                    "账户配置更新: user_id={} nickname={} changes={}", uid, u.user_nickname or "-", fmt_diff(diff)
+                )
 
     for u in users.values():
         _dump(u)
@@ -383,7 +384,7 @@ async def save_users_async(users: dict[str, UserRecord], expected_mtime: float |
 
     def _write_many() -> None:
         for u in users.values():
-            uid = u.user_id or u.userid
+            uid = u.user_id
             if not uid:
                 continue
             d = base / uid
@@ -426,7 +427,12 @@ async def save_users_async(users: dict[str, UserRecord], expected_mtime: float |
                         for f in fields
                         if str(prev_info.get(f) or "") != str(payload["user_info"].get(f) or "")
                     }
-                    logger.success("更新账户配置: user_id={} nickname={} changes={}", uid, u.user_nickname or "-", diff)
+                    logger.trace(
+                        "账户配置更新: user_id={} | nickname={} | 变更={}",
+                        uid,
+                        u.user_nickname or "-",
+                        ", ".join(f"{k}: {v['from']} -> {v['to']}" for k, v in diff.items()),
+                    )
 
     await asyncio.to_thread(_write_many)
     cont = _get_container()

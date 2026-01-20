@@ -2,12 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import ctypes
 import importlib
 import logging
 import os
 import platform
-import signal
 import sys
 import threading
 from collections.abc import Callable
@@ -131,10 +129,11 @@ def setup_win_eventlog(enable: bool) -> Callable[[str], None] | None:
 
 
 def install_global_handlers(report_event: Callable[[str], None] | None) -> None:
-    @logger.catch
-    def _excepthook(exctype, value, tb):
+    def _excepthook(exc_type, value, tb):
+        if exc_type is None or exc_type is KeyboardInterrupt:
+            return
         try:
-            logger.exception("未捕获的异常: {}", str(value))
+            logger.opt(exception=(exc_type, value, tb)).error("未捕获的异常: {}", value)
         finally:
             if report_event is not None:
                 with contextlib.suppress(Exception):
@@ -166,46 +165,6 @@ def install_global_handlers(report_event: Callable[[str], None] | None) -> None:
 
         with contextlib.suppress(Exception):
             loop.set_exception_handler(_loop_handler)
-
-
-def setup_signal_handlers(on_stop: Callable[[], None] | None = None) -> None:
-    def _handle_signal(signum, _frame):
-        with contextlib.suppress(Exception):
-            logger.warning("收到退出信号: {}", signum)
-        try:
-            if callable(on_stop):
-                on_stop()
-        except Exception:
-            pass
-
-    for name in ("SIGINT", "SIGTERM", "SIGBREAK"):
-        sig = getattr(signal, name, None)
-        if sig is not None:
-            try:
-                signal.signal(sig, _handle_signal)
-            except Exception as e:
-                logger.error("注册 {} 失败: {}", name, e)
-
-    if platform.system() == "Windows":
-        with contextlib.suppress(Exception):
-            DWORD = ctypes.c_ulong
-            BOOL = ctypes.c_int
-            HandlerRoutine = ctypes.WINFUNCTYPE(BOOL, DWORD)
-
-            def _console_handler(ctrl_type):
-                try:
-                    if callable(on_stop):
-                        on_stop()
-                except Exception:
-                    pass
-                return 1
-
-            _STATE["_console_handler"] = HandlerRoutine(_console_handler)
-            ctypes.windll.kernel32.SetConsoleCtrlHandler(_STATE["_console_handler"], True)
-
-
-def install_signal_handlers(on_stop: Callable[[], None] | None = None) -> None:
-    setup_signal_handlers(on_stop=on_stop)
 
 
 def ensure_single_instance(name: str = r"Local\SeewoFastLoginSingleInstance") -> bool:

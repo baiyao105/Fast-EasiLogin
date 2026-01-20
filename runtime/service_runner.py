@@ -5,17 +5,15 @@ from typing import Any, cast
 import uvicorn
 from loguru import logger
 
-from shared.config.config import load_appsettings_model
+from shared.store.config import load_appsettings_model
 
 from .utils import (
     get_api_port,
     install_global_handlers,
-    install_signal_handlers,
     prepare_api_runtime,
     register_server,
     setup_logging,
     setup_win_eventlog,
-    stop,
 )
 
 
@@ -26,10 +24,6 @@ def run_service(log_level: str = "INFO", access_log: bool = False, *, with_webui
     report_event = setup_win_eventlog(enable_eventlog)
     install_global_handlers(report_event)
 
-    def _on_signal():
-        stop()
-
-    install_signal_handlers(on_stop=_on_signal)
     if not prepare_api_runtime(s, log_level=(log_level or "INFO"), access_log=bool(access_log)):
         return
 
@@ -53,16 +47,7 @@ def run_service(log_level: str = "INFO", access_log: bool = False, *, with_webui
                         log_config=None,
                     )
                 )
-                with contextlib.suppress(Exception):
-                    cast(Any, server).install_signal_handlers = False
                 register_server(server)
-
-                def _stop_now(srv=server):
-                    with contextlib.suppress(Exception):
-                        srv.should_exit = True
-                        srv.force_exit = True
-
-                install_signal_handlers(on_stop=_stop_now)
                 server.run()
             except Exception as err:
                 logger.exception("服务异常退出: {}", str(err))
@@ -94,12 +79,6 @@ def run_service(log_level: str = "INFO", access_log: bool = False, *, with_webui
             cast(Any, server).install_signal_handlers = False
         register_server(server)
 
-        def _stop_now(srv=server):
-            with contextlib.suppress(Exception):
-                srv.should_exit = True
-                srv.force_exit = True
-
-        install_signal_handlers(on_stop=_stop_now)
         server.run()
 
 

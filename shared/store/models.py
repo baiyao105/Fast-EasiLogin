@@ -4,14 +4,13 @@ CURRENT_SCHEMA_VERSION = 1
 
 
 class UserRecord(BaseModel):
-    userid: str
+    user_id: str
     phone: str = ""
     password: str
     user_nickname: str
     user_realname: str | None = None
     head_img: str
     pt_timestamp: int | None = None
-    user_id: str | None = None
 
     @field_validator("phone", mode="before")
     def _validate_phone(cls, v: str | None) -> str:

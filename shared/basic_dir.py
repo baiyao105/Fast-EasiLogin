@@ -15,3 +15,7 @@ def ensure_data_dirs() -> None:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     USER_DATA_DIR.mkdir(parents=True, exist_ok=True)
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def fmt_diff(diff: dict) -> str:
+    return ", ".join(f"{k}: <red>{v['from'] or '-'}</red> → <green>{v['to']}</green>" for k, v in diff.items())

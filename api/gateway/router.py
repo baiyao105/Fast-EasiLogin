@@ -8,12 +8,12 @@ from api.user_auth.user_service import (
     fetch_user_info_with_token,
     get_aggregated_user_info,
 )
-from shared.config.config import (
+from shared.constants import TOKEN_MASK_MIN_LEN
+from shared.store.config import (
     load_users,
     save_users_async,
 )
-from shared.config.models import AppSaveDataBody, SaveUserBody, UserInfoRequest, UserRecord
-from shared.constants import TOKEN_MASK_MIN_LEN
+from shared.store.models import AppSaveDataBody, SaveUserBody, UserInfoRequest, UserRecord
 
 from .state import (
     _INFLIGHT_LOCK,
@@ -44,9 +44,9 @@ async def get_sso_list(pt_type: str | None = None):
     data: list[dict[str, str]] = [
         {
             "pt_nickname": u.user_nickname,
-            "pt_appid": (u.user_id or u.userid),
-            "pt_userid": (u.user_id or u.userid),
-            "pt_username": u.user_realname or (u.user_id or u.userid),
+            "pt_appid": u.user_id,
+            "pt_userid": u.user_id,
+            "pt_username": u.user_realname or u.user_id,
             "pt_photourl": u.head_img,
         }
         for u in users.values()
@@ -121,7 +121,7 @@ async def sso_login_user(
                 or (new_img or "") != (rec.head_img or "")
             )
             users_local[uid] = UserRecord(
-                userid=uid,
+                user_id=uid,
                 phone=rec.phone,
                 password=rec.password,
                 user_nickname=new_name or "",
@@ -130,17 +130,11 @@ async def sso_login_user(
                 pt_timestamp=rec.pt_timestamp,
             )
             await save_users_async(users_local, expected_mtime=None)
-            if changed:
-                logger.success(
-                    "账户信息被更新: usrid({}) {}",
-                    uid,
-                    str({"nickName": new_name, "realName": real_name, "head_img": new_img}),
-                )
         finally:
             async with _INFLIGHT_LOCK:
                 _INFLIGHT_USERS.discard(uid)
 
-    background_tasks.add_task(_update_user_profile, (record.user_id or record.userid), token_info)
+    background_tasks.add_task(_update_user_profile, record.user_id, token_info)
 
     return {"message": "success", "statusCode": "200"}
 
@@ -175,16 +169,15 @@ async def save_user(body: SaveUserBody | AppSaveDataBody, background_tasks: Back
     users = load_users()
     if isinstance(body, SaveUserBody):
         prev = next((r for r in users.values() if r.phone == body.userid), None)
-        key_uid = (prev.user_id if prev else None) or (prev.userid if prev else None)
+        key_uid = prev.user_id if prev else None
         users[key_uid or body.userid] = UserRecord(
-            userid=(key_uid or body.userid),
+            user_id=(key_uid or body.userid),
             phone=body.userid,
             password=body.password,
             user_nickname=body.user_name,
             user_realname=(prev.user_realname if prev else ""),
             head_img=body.head_img,
             pt_timestamp=(prev.pt_timestamp if prev else None),
-            user_id=key_uid,
         )
         await save_users_async(users, expected_mtime=None)
         logger.info("更新用户信息: phone={} user_id={}", body.userid, key_uid or "-")
@@ -203,14 +196,13 @@ async def save_user(body: SaveUserBody | AppSaveDataBody, background_tasks: Back
         real_name = fetched_once.get("realName") or real_name
     key = uid
     users[key] = UserRecord(
-        userid=key,
+        user_id=key,
         phone=(body.pt_username or (rec.phone if rec else "")),
         password=(rec.password if rec else ""),
         user_nickname=new_name or "",
         user_realname=real_name or (rec.user_realname if rec else ""),
         head_img=new_img or "",
         pt_timestamp=body.pt_timestamp,
-        user_id=uid,
     )
     await save_users_async(users, expected_mtime=None)
 
@@ -238,14 +230,13 @@ async def save_user(body: SaveUserBody | AppSaveDataBody, background_tasks: Back
                     or (new_img_local or "") != (rec_local.head_img or "")
                 )
                 users_local[key_local] = UserRecord(
-                    userid=key_local,
+                    user_id=key_local,
                     phone=rec_local.phone,
                     password=rec_local.password,
                     user_nickname=new_name_local or "",
                     user_realname=(real_name_local or rec_local.user_realname or ""),
                     head_img=new_img_local or "",
                     pt_timestamp=rec_local.pt_timestamp,
-                    user_id=uid_local,
                 )
                 await save_users_async(users_local, expected_mtime=None)
                 if changed_local:
