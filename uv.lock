@@ -288,7 +288,7 @@ wheels = [
 
 [[package]]
 name = "fastapi"
-version = "0.126.0"
+version = "0.128.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "annotated-doc" },
@@ -296,9 +296,9 @@ dependencies = [
     { name = "starlette" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/03/6c/28773e19bc203a2f3cf1d54a8e96ca7d05b58157a350aa4d8d37f2a5ba07/fastapi-0.126.0.tar.gz", hash = "sha256:f099fceb2a6d56dd21c59c4543d00be123dedacff869e76ae31ba3c0f963e2cd", size = 367455, upload-time = "2025-12-20T16:16:44.484Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/52/08/8c8508db6c7b9aae8f7175046af41baad690771c9bcde676419965e338c7/fastapi-0.128.0.tar.gz", hash = "sha256:1cc179e1cef10a6be60ffe429f79b829dce99d8de32d7acb7e6c8dfdf7f2645a", size = 365682, upload-time = "2025-12-27T15:21:13.714Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ca/0b/d5f999f27cb90152a6aadf094205b4d0eeab6a6b03e3e60346cde988c1bd/fastapi-0.126.0-py3-none-any.whl", hash = "sha256:c9330b9731e3bd2caae0a00e76353f86adbf592c5a25649a1682f3a92aeaff41", size = 111758, upload-time = "2025-12-20T16:16:42.349Z" },
+    { url = "https://files.pythonhosted.org/packages/5c/05/5cbb59154b093548acd0f4c7c474a118eda06da25aa75c616b72d8fcd92a/fastapi-0.128.0-py3-none-any.whl", hash = "sha256:aebd93f9716ee3b4f4fcfe13ffb7cf308d99c9f3ab5622d8877441072561582d", size = 103094, upload-time = "2025-12-27T15:21:12.154Z" },
 ]
 
 [[package]]
@@ -1163,7 +1163,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "diskcache", specifier = "~=5.6.3" },
-    { name = "fastapi", specifier = "~=0.126.0" },
+    { name = "fastapi", specifier = "~=0.128.0" },
     { name = "httpx", extras = ["http2"], specifier = "~=0.28.1" },
     { name = "loguru", specifier = "~=0.7.2" },
     { name = "mitmproxy", specifier = "~=11.0.2" },
