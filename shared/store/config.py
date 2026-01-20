@@ -301,6 +301,7 @@ def load_users() -> dict[str, UserRecord]:
         info = data.get("user_info") or {}
         users[uid] = UserRecord(
             user_id=uid,
+            active=bool(info.get("active", True)),
             phone=str(info.get("phone") or ""),
             password=str(info.get("password") or ""),
             user_nickname=str(info.get("user_nickname") or info.get("user_name") or ""),
@@ -337,6 +338,7 @@ def save_users(users: dict[str, UserRecord]) -> None:
         prev_info = dict(prev.get("user_info") or prev)
         payload = {
             "user_info": {
+                "active": u.active,
                 "phone": u.phone,
                 "password": u.password,
                 "user_nickname": u.user_nickname,
@@ -350,7 +352,7 @@ def save_users(users: dict[str, UserRecord]) -> None:
         tmp = p.with_suffix(".yaml.tmp")
         tmp.write_text(text, encoding="utf-8")
         tmp.replace(p)
-        fields = ["phone", "password", "user_nickname", "user_realname", "head_img", "user_id"]
+        fields = ["active", "phone", "password", "user_nickname", "user_realname", "head_img", "user_id"]
         if created:
             logger.success("创建账户配置: user_id={} nickname={}", uid, u.user_nickname or "-")
         else:
@@ -400,6 +402,7 @@ async def save_users_async(users: dict[str, UserRecord], expected_mtime: float |
             prev_info = dict(prev.get("user_info") or prev)
             payload = {
                 "user_info": {
+                    "active": u.active,
                     "phone": u.phone,
                     "password": u.password,
                     "user_nickname": u.user_nickname,
@@ -413,7 +416,7 @@ async def save_users_async(users: dict[str, UserRecord], expected_mtime: float |
             tmp = p.with_suffix(".yaml.tmp")
             tmp.write_text(text, encoding="utf-8")
             tmp.replace(p)
-            fields = ["phone", "password", "user_nickname", "user_realname", "head_img", "user_id"]
+            fields = ["active", "phone", "password", "user_nickname", "user_realname", "head_img", "user_id"]
             if created:
                 logger.success("创建账户配置: user_id={} nickname={}", uid, u.user_nickname or "-")
             else:

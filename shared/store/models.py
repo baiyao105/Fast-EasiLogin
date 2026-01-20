@@ -5,6 +5,7 @@ CURRENT_SCHEMA_VERSION = 1
 
 class UserRecord(BaseModel):
     user_id: str
+    active: bool = True
     phone: str = ""
     password: str
     user_nickname: str

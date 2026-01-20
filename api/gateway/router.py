@@ -50,6 +50,7 @@ async def get_sso_list(pt_type: str | None = None):
             "pt_photourl": u.head_img,
         }
         for u in users.values()
+        if u.active
     ]
     # logger.info("SSO列表: count={}", len(data))
     return {"message": "success", "statusCode": "200", "data": data}
@@ -70,8 +71,10 @@ async def sso_login_user(
         return f"{t[:6]}...{t[-4:]}" if len(t) > TOKEN_MASK_MIN_LEN else t
 
     users = load_users()
-    record = users.get(userid) or next((r for r in users.values() if r.phone == userid), None)
-    if not record:
+    record = users.get(userid)
+    if record is None or not record.active:
+        record = next((r for r in users.values() if r.phone == userid and r.active), None)
+    if record is None:
         raise HTTPException(status_code=404, detail={"message": "user_not_found", "statusCode": "404"})
     login_account = record.phone or userid
     try:
@@ -122,6 +125,7 @@ async def sso_login_user(
             )
             users_local[uid] = UserRecord(
                 user_id=uid,
+                active=rec.active,
                 phone=rec.phone,
                 password=rec.password,
                 user_nickname=new_name or "",
@@ -170,8 +174,10 @@ async def save_user(body: SaveUserBody | AppSaveDataBody, background_tasks: Back
     if isinstance(body, SaveUserBody):
         prev = next((r for r in users.values() if r.phone == body.userid), None)
         key_uid = prev.user_id if prev else None
+        active_val = prev.active if prev else False
         users[key_uid or body.userid] = UserRecord(
             user_id=(key_uid or body.userid),
+            active=active_val,
             phone=body.userid,
             password=body.password,
             user_nickname=body.user_name,
@@ -195,8 +201,10 @@ async def save_user(body: SaveUserBody | AppSaveDataBody, background_tasks: Back
         fetched_once = await fetch_user_info_with_token(candidate_token)
         real_name = fetched_once.get("realName") or real_name
     key = uid
+    active_val = rec.active if rec else False
     users[key] = UserRecord(
         user_id=key,
+        active=active_val,
         phone=(body.pt_username or (rec.phone if rec else "")),
         password=(rec.password if rec else ""),
         user_nickname=new_name or "",
@@ -231,6 +239,7 @@ async def save_user(body: SaveUserBody | AppSaveDataBody, background_tasks: Back
                 )
                 users_local[key_local] = UserRecord(
                     user_id=key_local,
+                    active=rec_local.active,
                     phone=rec_local.phone,
                     password=rec_local.password,
                     user_nickname=new_name_local or "",
