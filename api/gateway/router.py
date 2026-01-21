@@ -10,6 +10,7 @@ from api.user_auth.user_service import (
 )
 from shared.constants import TOKEN_MASK_MIN_LEN
 from shared.store.config import (
+    find_user,
     load_users,
     save_users_async,
 )
@@ -71,20 +72,11 @@ async def sso_login_user(
         return f"{t[:6]}...{t[-4:]}" if len(t) > TOKEN_MASK_MIN_LEN else t
 
     users = load_users()
-    record = users.get(userid)
+    record = find_user(userid, users)
     if record is None or not record.active:
-        record = next((r for r in users.values() if r.phone == userid and r.active), None)
-    if record is None:
         raise HTTPException(status_code=404, detail={"message": "user_not_found", "statusCode": "404"})
     login_account = record.phone or userid
-    try:
-        token_info = await user_login(login_account, record.password)
-    except HTTPException as e:
-        if e.status_code == 504:  # noqa: PLR2004
-            logger.error(f"网络错误: 获取新token失败: account={login_account} {e}")
-        elif e.status_code == 401:  # noqa: PLR2004
-            logger.warning(f"登录失败: 账号或密码错误: account={login_account} {e}")
-        raise
+    token_info = await user_login(login_account, record.password, _userid=record.user_id)
     token = str(token_info.get("token") or "")
     response.set_cookie(
         key="pt_token",

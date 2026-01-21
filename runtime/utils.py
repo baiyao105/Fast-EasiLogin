@@ -199,13 +199,8 @@ def prepare_api_runtime(settings: Any, *, log_level: str = "INFO", access_log: b
         }
     )
     try:
-        _proxy_server = importlib.import_module("proxy.server")
         s = settings
-        _proxy_server.start_mitm(s.model_dump())
-        base_port = int(s.Global.port)
-        listen_port = int(s.mitmproxy.listen_port)
-        srv_port = base_port + 1 if listen_port == base_port else base_port
-        _STATE["cfg"]["port"] = srv_port
+        _STATE["cfg"]["port"] = int(s.Global.port)
     except Exception as err:
         logger.exception("初始化运行时失败: {}", str(err))
         return False

@@ -25,9 +25,7 @@ async def lifespan(app: FastAPI):
         app.state.token_renew = asyncio.create_task(token_renew_job(int(s_local.Global.token_check_interval)))
     try:
         s = load_appsettings_model()
-        base_port = int(s.Global.port)
-        listen_port = int(s.mitmproxy.listen_port)
-        srv_port = base_port + 1 if listen_port == base_port else base_port
+        srv_port = int(s.Global.port)
         logger.success("服务启动成功: url=http://{}:{}", "127.0.0.1", srv_port)
     except Exception as e:
         logger.exception(f"服务启动失败: {e}")

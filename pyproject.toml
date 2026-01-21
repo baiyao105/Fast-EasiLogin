@@ -12,7 +12,6 @@ dependencies = [
   "fastapi ~= 0.128.0",
   "httpx[http2] ~= 0.28.1",
   "loguru ~= 0.7.2",
-  "mitmproxy ~= 11.0.2",
   "orjson ~= 3.11.5",
   "pydantic ~= 2.12.5",
   "python-multipart ~= 0.0.20",

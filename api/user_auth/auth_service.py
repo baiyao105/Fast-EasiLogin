@@ -9,6 +9,7 @@ from loguru import logger
 from shared.constants import TOKEN_INVALID_CODE
 from shared.errors import CircuitOpenError, RequestFailedError
 from shared.http_client import request_with_retry
+from shared.store.config import find_user, load_appsettings_model, load_users, save_users_async
 
 
 async def _exchange_token(token: str, *, max_attempts: int = 3) -> dict[str, Any]:
@@ -76,7 +77,7 @@ async def check_token_status(token: str, *, max_attempts: int = 3) -> tuple[bool
     return invalid, code, data if isinstance(data, dict) else {}
 
 
-async def user_login(userid: str, password_plain: str) -> dict[str, Any]:
+async def user_login(userid: str, password_plain: str, _userid: str | None = None) -> dict[str, Any]:
     md5_pwd = hashlib.md5(password_plain.encode("utf-8")).hexdigest()
     url = "https://edu.seewo.com/api/v1/auth/login"
     payload = {
@@ -105,6 +106,20 @@ async def user_login(userid: str, password_plain: str) -> dict[str, Any]:
         code = data.get("statusCode") if isinstance(data, dict) else None
         msg = data.get("message") if isinstance(data, dict) else None
         logger.warning("登录失败: userid={} code={} message={}", userid, (code or "-"), str(msg or "-"))
+        cfg = load_appsettings_model()
+        should_disable = (_userid is None) or cfg.Global.enable_password_error_disable
+        if should_disable:
+            try:
+                users = load_users()
+                target_user = find_user(_userid or userid, users)
+                if target_user and target_user.active:
+                    target_user.active = False
+                    users[target_user.user_id] = target_user
+                    await save_users_async(users)
+                    logger.info("因密码错误自动禁用账户: user_id={}", target_user.user_id)
+            except Exception as e:
+                logger.error("自动禁用账户失败: {}", str(e))
+
         raise HTTPException(status_code=401, detail={"message": "token_invalid", "statusCode": "401"})
 
     u = data.get("data", {}).get("user", {})

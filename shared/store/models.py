@@ -100,13 +100,6 @@ class AppSaveDataBody(BaseModel):
     pt_session: str | None = None
 
 
-class MitmSettings(BaseModel):
-    enable: bool = False
-    listen_host: str = "127.0.0.1"
-    listen_port: int = 24300
-    script: str | None = "proxy/mitm_local_id.py"
-
-
 class GlobalSettings(BaseModel):
     port: int = 24301
     token_check_interval: int = 300
@@ -115,10 +108,10 @@ class GlobalSettings(BaseModel):
     auto_restart_on_crash: bool = True
     restart_delay_seconds: int = 3
     cache_max_entries: int = 512
+    enable_password_error_disable: bool = False
 
 
 class AppSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
     Global: GlobalSettings = GlobalSettings()
-    mitmproxy: MitmSettings = MitmSettings()
     schema_version: int = CURRENT_SCHEMA_VERSION

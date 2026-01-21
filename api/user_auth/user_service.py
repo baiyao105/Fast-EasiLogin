@@ -8,7 +8,7 @@ from loguru import logger
 
 from shared.constants import LOGIN_TTL, TOKEN_MASK_MIN_LEN, USERINFO_TTL
 from shared.http_client import request_with_retry
-from shared.store.config import get_cache, load_users
+from shared.store.config import find_user, get_cache, load_users
 from shared.store.models import AggregatedUserInfo, UserIdentityInfo, UserInfoExtendVo
 
 from .auth_service import user_login
@@ -49,19 +49,18 @@ async def fetch_user_info_with_token(token: str) -> dict[str, Any]:
         return result
 
 
-async def get_user_info(userid: str, password_plain: str) -> dict[str, Any]:
-    login = await user_login(userid, password_plain)
+async def get_user_info(userid: str, password_plain: str, _userid: str | None = None) -> dict[str, Any]:
+    login = await user_login(userid, password_plain, _userid=_userid)
     token = login.get("token")
     return await fetch_user_info_with_token(token) if token else {}
 
 
 async def get_user_info_by_userid(userid: str) -> dict[str, Any]:
     users = load_users()
-    record = users.get(userid)
+    record = find_user(userid, users)
     if not record:
         return {}
-    # 按照规范: 登录仅使用 phone
-    return await get_user_info(record.phone or userid, record.password)
+    return await get_user_info(record.phone or userid, record.password, _userid=record.user_id)
 
 
 def select_fields(data: dict[str, Any], fields: list[str] | None) -> dict[str, Any]:
@@ -84,9 +83,9 @@ async def get_aggregated_user_info(userid: str, password_plain: str, fields: lis
 
     # userid 为 user_id; 登录仅使用 phone, 需要映射
     users = load_users()
-    rec = users.get(userid)
+    rec = find_user(userid, users)
     phone_for_login = rec.phone if rec else userid
-    login = await user_login(phone_for_login, password_plain)
+    login = await user_login(phone_for_login, password_plain, _userid=(rec.user_id if rec else None))
     token = login.get("token")
     info = await fetch_user_info_with_token(token) if token else {}
     ext = info.get("userInfoExtendVo") or {}

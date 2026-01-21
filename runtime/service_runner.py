@@ -34,9 +34,7 @@ def run_service(log_level: str = "INFO", access_log: bool = False, *, with_webui
             try:
                 port = get_api_port()
                 if not port:
-                    base_port = int(s.Global.port)
-                    listen_port = int(s.mitmproxy.listen_port)
-                    port = base_port + 1 if listen_port == base_port else base_port
+                    port = int(s.Global.port)
                 server = uvicorn.Server(
                     uvicorn.Config(
                         "api.main:app",
@@ -62,9 +60,7 @@ def run_service(log_level: str = "INFO", access_log: bool = False, *, with_webui
     else:
         port = get_api_port()
         if not port:
-            base_port = int(s.Global.port)
-            listen_port = int(s.mitmproxy.listen_port)
-            port = base_port + 1 if listen_port == base_port else base_port
+            port = int(s.Global.port)
         server = uvicorn.Server(
             uvicorn.Config(
                 "api.main:app",

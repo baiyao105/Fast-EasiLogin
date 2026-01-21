@@ -51,10 +51,8 @@ class AppSettingsManager:
         fc = dict(file_cfg or {})
         if isinstance(fc.get("Global"), dict):
             merged["Global"].update(fc.get("Global") or {})
-        if isinstance(fc.get("mitmproxy"), dict):
-            merged["mitmproxy"].update(fc.get("mitmproxy") or {})
         for k, v in fc.items():
-            if k not in ("Global", "mitmproxy"):
+            if k not in ("Global",):
                 merged[k] = v
         merged["schema_version"] = CURRENT_SCHEMA_VERSION
         return merged
@@ -278,6 +276,7 @@ def _latest_profiles_mtime(base_dir: Path) -> float:
 
 def load_users() -> dict[str, UserRecord]:
     """读取所有用户的 profile.yaml 为 UserRecord 字典."""
+    # Fixme:todo:缓存
     ensure_data_dir()
     base = USER_DATA_DIR
     base.mkdir(parents=True, exist_ok=True)
@@ -313,6 +312,19 @@ def load_users() -> dict[str, UserRecord]:
     cont.users_cache = users
     cont.users_cache_mtime = mtime
     return users
+
+
+def find_user(identifier: str, users: dict[str, UserRecord] | None = None) -> UserRecord | None:
+    """通过 user_id 或 phone 查找用户"""
+    # Fixme: todo:反向索引建立器
+    if users is None:
+        users = load_users()
+    if identifier in users:
+        return users[identifier]
+    for u in users.values():
+        if identifier == u.user_id or identifier == u.phone:  # noqa: PLR1714
+            return u
+    return None
 
 
 def save_users(users: dict[str, UserRecord]) -> None:
