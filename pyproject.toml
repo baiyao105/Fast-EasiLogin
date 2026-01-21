@@ -25,6 +25,35 @@ readme = "README.md"
 requires-python = ">=3.11"
 version = "0.1.0"
 
+[tool.pyright]
+exclude = [
+  "**/__pycache__",
+  ".venv",
+  "build",
+  "dist"
+]
+include = [
+  "api",
+  "launcher.py",
+  "runtime",
+  "shared"
+]
+pythonPlatform = "Windows"
+pythonVersion = "3.11"
+reportGeneralTypeIssues = true
+reportMissingImports = true
+reportMissingTypeStubs = false
+reportOptionalCall = true
+reportOptionalMemberAccess = true
+reportOptionalSubscript = true
+reportUnknownMemberType = false
+reportUnknownParameterType = false
+reportUnknownVariableType = false
+typeCheckingMode = "standard"
+useLibraryCodeForTypes = true
+venv = ".venv"
+venvPath = "."
+
 [tool.ruff]
 line-length = 120
 target-version = "py311"

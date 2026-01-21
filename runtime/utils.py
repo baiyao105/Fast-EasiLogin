@@ -148,7 +148,6 @@ def install_global_handlers(report_event: Callable[[str], None] | None) -> None:
 
     if loop is not None:
 
-
         def _loop_handler(_loop, context):
             err = context.get("exception")
             msg = context.get("message") or ""
