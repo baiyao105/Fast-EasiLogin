@@ -1,8 +1,10 @@
 [dependency-groups]
 dev = [
-  "prek>=0.2.10",
-  "pyright>=1.1.405",
-  "ruff>=0.14.8"
+  "mypy >= 1.19.1",
+  "prek >= 0.2.10",
+  "pyright >= 1.1.405",
+  "ruff >= 0.14.8",
+  "types-PyYAML >= 6.0.12.20250915"
 ]
 
 [project]
@@ -25,6 +27,33 @@ readme = "README.md"
 requires-python = ">=3.11"
 version = "0.1.0"
 
+[tool.mypy]
+check_untyped_defs = true
+disallow_incomplete_defs = false
+disallow_untyped_defs = false
+error_summary = true
+ignore_missing_imports = true
+implicit_reexport = false
+no_implicit_optional = true
+plugins = ["pydantic.mypy"]
+pretty = true
+python_version = "3.11"
+show_error_codes = true
+strict_optional = true
+warn_no_return = true
+warn_redundant_casts = true
+warn_return_any = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+ignore_errors = true
+module = [
+  "servicemanager",
+  "win32event",
+  "win32service",
+  "win32serviceutil"
+]
+
 [tool.pyright]
 exclude = [
   "**/__pycache__",
@@ -33,6 +62,7 @@ exclude = [
   "dist"
 ]
 include = [
+  "**/*.py",
   "api",
   "launcher.py",
   "runtime",
@@ -84,6 +114,7 @@ select = [
   "E",
   "F",
   "I",
+  "PERF",
   "PIE",
   "PL",
   "PTH",

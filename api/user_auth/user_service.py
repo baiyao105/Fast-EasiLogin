@@ -2,7 +2,7 @@ import contextlib
 import hashlib
 import json
 import random
-from typing import Any
+from typing import Any, cast
 
 from loguru import logger
 
@@ -17,8 +17,8 @@ from .auth_service import user_login
 async def fetch_user_info_with_token(token: str) -> dict[str, Any]:
     rc = get_cache()
     url = "https://edu.seewo.com/api/v2/user/info"
-    headers = {"X-APM-TraceId": "trace"}
-    cookies = {"x-auth-app": "EasiNote5", "x-auth-token": token}
+    headers = {"X-auth-refer": "EnAppAndroid", "X-Crypto-Version": "1", "User-Agent": "okhttp/3.12.12"}
+    cookies = {"x-auth-app": "EasiNoteAndroid", "x-auth-token": token}
     try:
         resp = await request_with_retry("GET", url, headers=headers, cookies=cookies)
         data = resp.json()
@@ -46,7 +46,7 @@ async def fetch_user_info_with_token(token: str) -> dict[str, Any]:
         logger.error("账户信息请求失败: token={} err={}", masked or "-", str(err))
         return {}
     else:
-        return result
+        return cast(dict[str, Any], result)
 
 
 async def get_user_info(userid: str, password_plain: str, _userid: str | None = None) -> dict[str, Any]:

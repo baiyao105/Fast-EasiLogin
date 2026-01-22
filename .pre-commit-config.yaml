@@ -28,7 +28,7 @@ repos:
     rev: v0.14.13
     hooks:
       - id: ruff-check
-        args: ["--fix", "--show-fixes", "--exit-zero"]
+        args: ["--fix", "--show-fixes"]
       - id: ruff-format
 
   - repo: https://github.com/pre-commit/mirrors-prettier

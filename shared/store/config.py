@@ -8,6 +8,7 @@ import time
 import tomllib  # py311
 from collections import OrderedDict
 from pathlib import Path
+from typing import cast
 
 import tomlkit
 import yaml
@@ -226,7 +227,7 @@ async def cache_json_get(key: str) -> dict:
     if not raw:
         return {}
     try:
-        return json.loads(raw)
+        return cast(dict, json.loads(raw))
     except Exception:
         return {}
 

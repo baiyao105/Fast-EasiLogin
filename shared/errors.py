@@ -1,3 +1,7 @@
+import functools
+import warnings
+
+
 class TokenInvalidError(Exception):
     pass
 
@@ -16,3 +20,15 @@ class CircuitOpenError(Exception):
 
 class RequestFailedError(Exception):
     pass
+
+
+def deprecated(reason="此函数已弃用"):
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            warnings.warn(f"{func.__name__} 已弃用: {reason}", category=DeprecationWarning, stacklevel=2)
+            return func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator

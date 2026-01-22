@@ -3,7 +3,7 @@ from __future__ import annotations
 import contextlib
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 import servicemanager
 import win32event
@@ -133,7 +133,7 @@ class WindowsServiceManager:
     def status(service_name: str) -> int | None:
         try:
             st = win32serviceutil.QueryServiceStatus(service_name)
-            return st[1]
+            return cast(int, st[1])
         except Exception:
             return None
 

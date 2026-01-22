@@ -1,17 +1,17 @@
 import hashlib
 import secrets
 import time
-from typing import Any
+from typing import Any, cast
 
 from fastapi import HTTPException
 from loguru import logger
 
-from shared.constants import TOKEN_INVALID_CODE
-from shared.errors import CircuitOpenError, RequestFailedError
+from shared.errors import CircuitOpenError, RequestFailedError, deprecated
 from shared.http_client import request_with_retry
 from shared.store.config import find_user, load_appsettings_model, load_users, save_users_async
 
 
+@deprecated("可能存在问题")
 async def _exchange_token(token: str, *, max_attempts: int = 3) -> dict[str, Any]:
     url = f"https://account.seewo.com/seewo-account/api/v1/auth/{token}/exchange"
     headers = {
@@ -35,7 +35,7 @@ async def _exchange_token(token: str, *, max_attempts: int = 3) -> dict[str, Any
         return {}
     else:
         logger.trace("请求的返回信息: {}", str(data))
-        return data
+        return cast(dict[str, Any], data)
 
 
 # async def _is_token_invalid(token: str, *, fast: bool = False) -> bool:
@@ -70,11 +70,11 @@ async def _exchange_token(token: str, *, max_attempts: int = 3) -> dict[str, Any
 #     return await _is_token_invalid(token, fast=fast)
 
 
-async def check_token_status(token: str, *, max_attempts: int = 3) -> tuple[bool, int | None, dict[str, Any]]:
-    data = await _exchange_token(token, max_attempts=max_attempts)
-    code = data.get("statusCode") if isinstance(data, dict) else None
-    invalid = code == TOKEN_INVALID_CODE
-    return invalid, code, data if isinstance(data, dict) else {}
+# async def check_token_status(token: str, *, max_attempts: int = 3) -> tuple[bool, int | None, dict[str, Any]]:
+#     data = await _exchange_token(token, max_attempts=max_attempts)
+#     code = data.get("statusCode") if isinstance(data, dict) else None
+#     invalid = code == TOKEN_INVALID_CODE
+#     return invalid, code, data if isinstance(data, dict) else {}
 
 
 async def user_login(userid: str, password_plain: str, _userid: str | None = None) -> dict[str, Any]:
