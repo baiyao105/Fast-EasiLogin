@@ -101,7 +101,7 @@ class AppSaveDataBody(BaseModel):
 
 
 class GlobalSettings(BaseModel):
-    port: int = 24301
+    port: int = 24300
     token_check_interval: int = 300
     token_ttl: int = 60
     enable_eventlog: bool = True

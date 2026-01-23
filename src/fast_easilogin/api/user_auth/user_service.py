@@ -6,10 +6,10 @@ from typing import Any, cast
 
 from loguru import logger
 
-from shared.constants import LOGIN_TTL, TOKEN_MASK_MIN_LEN, USERINFO_TTL
-from shared.http_client import request_with_retry
-from shared.store.config import find_user, get_cache, load_users
-from shared.store.models import AggregatedUserInfo, UserIdentityInfo, UserInfoExtendVo
+from fast_easilogin.shared.constants import LOGIN_TTL, TOKEN_MASK_MIN_LEN, USERINFO_TTL
+from fast_easilogin.shared.http_client import request_with_retry
+from fast_easilogin.shared.store.config import find_user, get_cache, load_users
+from fast_easilogin.shared.store.models import AggregatedUserInfo, UserIdentityInfo, UserInfoExtendVo
 
 from .auth_service import user_login
 

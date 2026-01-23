@@ -21,8 +21,8 @@ dependencies = [
   "tomlkit ~= 0.14.0",
   "uvicorn ~= 0.40.0"
 ]
-description = "Fast-EasiLogin"
-name = "seewo-fastlogin"
+description = "seewo-fastlogin"
+name = "fast_easilogin"
 readme = "README.md"
 requires-python = ">=3.11"
 version = "0.1.0"
@@ -62,11 +62,7 @@ exclude = [
   "dist"
 ]
 include = [
-  "**/*.py",
-  "api",
-  "launcher.py",
-  "runtime",
-  "shared"
+  "src"
 ]
 pythonPlatform = "Windows"
 pythonVersion = "3.11"

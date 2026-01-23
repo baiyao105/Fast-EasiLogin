@@ -1,7 +1,7 @@
 import asyncio
 import random
 
-from shared.store.config import load_appsettings_model
+from fast_easilogin.shared.store.config import load_appsettings_model
 
 _INFLIGHT_USERS: set[str] = set()
 _INFLIGHT_LOCK = asyncio.Lock()

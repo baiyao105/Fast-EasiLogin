@@ -3,10 +3,10 @@ import contextlib
 import win32event
 import win32service
 
-from runtime.mode import parse_mode
-from runtime.service_runner import run_api, run_service
-from runtime.utils import stop
-from shared.service_manager import WindowsServiceBase, WindowsServiceManager
+from fast_easilogin.runtime.mode import parse_mode
+from fast_easilogin.runtime.service_runner import run_api, run_service
+from fast_easilogin.runtime.utils import stop
+from fast_easilogin.shared.service_manager import WindowsServiceBase, WindowsServiceManager
 
 
 def main(argv: list[str] | None = None):
@@ -14,7 +14,7 @@ def main(argv: list[str] | None = None):
     if mode.services == "install":
         WindowsServiceManager.install(
             service_name="SeewoFastLoginService",
-            module="launcher",
+            module="fast_easilogin.launcher",
             klass="AppService",
             display_name="Seewo FastLogin Service",
             description="Seewo FastLogin background service",

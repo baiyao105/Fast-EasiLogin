@@ -14,8 +14,8 @@ import tomlkit
 import yaml
 from loguru import logger
 
-from shared.basic_dir import APPSETTINGS_FILE, APPSETTINGS_TOML, DATA_DIR, USER_DATA_DIR, fmt_diff
-from shared.store.models import CURRENT_SCHEMA_VERSION, AppSettings, UserRecord
+from fast_easilogin.shared.basic_dir import APPSETTINGS_FILE, APPSETTINGS_TOML, DATA_DIR, USER_DATA_DIR, fmt_diff
+from fast_easilogin.shared.store.models import CURRENT_SCHEMA_VERSION, AppSettings, UserRecord
 
 toml_dumps = tomlkit.dumps
 

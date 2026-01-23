@@ -7,12 +7,12 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import ORJSONResponse
 from loguru import logger
 
-from api.gateway.router import router
-from api.gateway.state import token_renew_job
-from runtime.utils import stop
-from shared.basic_dir import ensure_data_dirs
-from shared.http_client import close_http_client, init_http_client
-from shared.store.config import clear_cache, close_cache, load_appsettings_model
+from fast_easilogin.api.gateway.router import router
+from fast_easilogin.api.gateway.state import token_renew_job
+from fast_easilogin.runtime.utils import stop
+from fast_easilogin.shared.basic_dir import ensure_data_dirs
+from fast_easilogin.shared.http_client import close_http_client, init_http_client
+from fast_easilogin.shared.store.config import clear_cache, close_cache, load_appsettings_model
 
 
 @asynccontextmanager

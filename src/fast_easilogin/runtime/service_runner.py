@@ -5,7 +5,7 @@ from typing import Any, cast
 import uvicorn
 from loguru import logger
 
-from shared.store.config import load_appsettings_model
+from fast_easilogin.shared.store.config import load_appsettings_model
 
 from .utils import (
     get_api_port,
@@ -37,8 +37,8 @@ def run_service(log_level: str = "INFO", access_log: bool = False, *, with_webui
                     port = int(s.Global.port)
                 server = uvicorn.Server(
                     uvicorn.Config(
-                        "api.main:app",
-                        host="0.0.0.0",
+                        "fast_easilogin.api.main:app",
+                        host="127.0.0.1",
                         port=port,
                         server_header=False,
                         access_log=bool(access_log),
@@ -63,8 +63,8 @@ def run_service(log_level: str = "INFO", access_log: bool = False, *, with_webui
             port = int(s.Global.port)
         server = uvicorn.Server(
             uvicorn.Config(
-                "api.main:app",
-                host="0.0.0.0",
+                "fast_easilogin.api.main:app",
+                host="127.0.0.1",
                 port=port,
                 server_header=False,
                 access_log=bool(access_log),

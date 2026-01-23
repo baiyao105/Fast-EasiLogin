@@ -6,9 +6,9 @@ from typing import Any, cast
 from fastapi import HTTPException
 from loguru import logger
 
-from shared.errors import CircuitOpenError, RequestFailedError, deprecated
-from shared.http_client import request_with_retry
-from shared.store.config import find_user, load_appsettings_model, load_users, save_users_async
+from fast_easilogin.shared.errors import CircuitOpenError, RequestFailedError, deprecated
+from fast_easilogin.shared.http_client import request_with_retry
+from fast_easilogin.shared.store.config import find_user, load_appsettings_model, load_users, save_users_async
 
 
 @deprecated("可能存在问题")

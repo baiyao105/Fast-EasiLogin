@@ -15,7 +15,7 @@ from typing import Any
 
 from loguru import logger
 
-from shared.basic_dir import LOGS_DIR, ensure_data_dirs
+from fast_easilogin.shared.basic_dir import LOGS_DIR, ensure_data_dirs
 
 _STATE: dict[str, Any] = {
     "server": None,
@@ -97,7 +97,7 @@ def setup_win_eventlog(enable: bool) -> Callable[[str], None] | None:
     except Exception:
         return None
 
-    app_name = "Fast-EasiLogin"
+    app_name = "fast_easilogin"
     with contextlib.suppress(Exception):
         win32evtlogutil.AddSourceToRegistry(app_name)
 

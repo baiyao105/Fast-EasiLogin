@@ -1,20 +1,20 @@
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response
 from loguru import logger
 
-from api.user_auth.auth_service import (
+from fast_easilogin.api.user_auth.auth_service import (
     user_login,
 )
-from api.user_auth.user_service import (
+from fast_easilogin.api.user_auth.user_service import (
     fetch_user_info_with_token,
     get_aggregated_user_info,
 )
-from shared.constants import TOKEN_MASK_MIN_LEN
-from shared.store.config import (
+from fast_easilogin.shared.constants import TOKEN_MASK_MIN_LEN
+from fast_easilogin.shared.store.config import (
     find_user,
     load_users,
     save_users_async,
 )
-from shared.store.models import AppSaveDataBody, SaveUserBody, UserInfoRequest, UserRecord
+from fast_easilogin.shared.store.models import AppSaveDataBody, SaveUserBody, UserInfoRequest, UserRecord
 
 from .state import (
     _INFLIGHT_LOCK,
