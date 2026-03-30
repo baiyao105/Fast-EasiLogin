@@ -19,13 +19,13 @@ repos:
         args: ["--fix=lf"]
 
   - repo: https://github.com/pappasam/toml-sort
-    rev: v0.24.3
+    rev: v0.24.4
     hooks:
       - id: toml-sort-fix
         args: ["--all", "--in-place"]
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.13
+    rev: v0.15.8
     hooks:
       - id: ruff-check
         args: ["--fix", "--show-fixes"]
