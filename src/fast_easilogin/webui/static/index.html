@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>希沃快捷登录 - 管理面板</title>
+    <link rel="stylesheet" href="/static/css/style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header class="header">
+        <h1>🚀 希沃快捷登录</h1>
+        <p class="subtitle">Seewo FastLogin 管理面板</p>
+      </header>
+
+      <nav class="tabs">
+        <button class="tab-btn active" data-tab="users">用户管理</button>
+        <button class="tab-btn" data-tab="settings">系统设置</button>
+        <button class="tab-btn" data-tab="status">服务状态</button>
+      </nav>
+
+      <main class="content">
+        <section id="users-tab" class="tab-content active">
+          <div class="section-header">
+            <h2>用户列表</h2>
+            <button class="btn btn-primary" id="add-user-btn">
+              + 添加用户
+            </button>
+          </div>
+          <div class="user-list" id="user-list">
+            <div class="loading">加载中...</div>
+          </div>
+        </section>
+
+        <section id="settings-tab" class="tab-content">
+          <h2>系统设置</h2>
+          <form id="settings-form" class="settings-form">
+            <div class="form-group">
+              <label for="port">API 端口</label>
+              <input
+                type="number"
+                id="port"
+                name="port"
+                value="24300"
+                min="1"
+                max="65535"
+              />
+            </div>
+            <div class="form-group">
+              <label for="webui_port">WebUI 端口</label>
+              <input
+                type="number"
+                id="webui_port"
+                name="webui_port"
+                value="24301"
+                min="1"
+                max="65535"
+              />
+            </div>
+            <div class="form-group">
+              <label for="token_check_interval">Token 检查间隔 (秒)</label>
+              <input
+                type="number"
+                id="token_check_interval"
+                name="token_check_interval"
+                value="300"
+                min="60"
+              />
+            </div>
+            <div class="form-group">
+              <label for="token_ttl">Token 有效期 (秒)</label>
+              <input
+                type="number"
+                id="token_ttl"
+                name="token_ttl"
+                value="60"
+                min="30"
+              />
+            </div>
+            <div class="form-group">
+              <label for="cache_max_entries">缓存最大条目数</label>
+              <input
+                type="number"
+                id="cache_max_entries"
+                name="cache_max_entries"
+                value="512"
+                min="100"
+              />
+            </div>
+            <div class="form-group checkbox-group">
+              <label>
+                <input
+                  type="checkbox"
+                  id="enable_eventlog"
+                  name="enable_eventlog"
+                  checked
+                />
+                启用事件日志
+              </label>
+            </div>
+            <div class="form-group checkbox-group">
+              <label>
+                <input
+                  type="checkbox"
+                  id="auto_restart_on_crash"
+                  name="auto_restart_on_crash"
+                  checked
+                />
+                崩溃后自动重启
+              </label>
+            </div>
+            <div class="form-group">
+              <label for="restart_delay_seconds">重启延迟 (秒)</label>
+              <input
+                type="number"
+                id="restart_delay_seconds"
+                name="restart_delay_seconds"
+                value="3"
+                min="1"
+              />
+            </div>
+            <div class="form-group checkbox-group">
+              <label>
+                <input
+                  type="checkbox"
+                  id="enable_password_error_disable"
+                  name="enable_password_error_disable"
+                />
+                密码错误时自动禁用账户
+              </label>
+            </div>
+            <div class="form-actions">
+              <button type="submit" class="btn btn-primary">保存设置</button>
+            </div>
+          </form>
+        </section>
+
+        <section id="status-tab" class="tab-content">
+          <h2>服务状态</h2>
+          <div class="status-grid">
+            <div class="status-card">
+              <h3>服务信息</h3>
+              <div class="status-item">
+                <span class="label">运行状态:</span>
+                <span class="value" id="service-status">运行中</span>
+              </div>
+              <div class="status-item">
+                <span class="label">服务地址:</span>
+                <span class="value" id="service-url"
+                  >http://127.0.0.1:24300</span
+                >
+              </div>
+              <div class="status-item">
+                <span class="label">用户数量:</span>
+                <span class="value" id="user-count">0</span>
+              </div>
+            </div>
+            <div class="status-card">
+              <h3>快速操作</h3>
+              <div class="quick-actions">
+                <button class="btn btn-secondary" id="refresh-status-btn">
+                  刷新状态
+                </button>
+                <button class="btn btn-secondary" id="clear-cache-btn">
+                  清除缓存
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="modal" id="user-modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="modal-title">添加用户</h3>
+          <button class="modal-close" id="modal-close">&times;</button>
+        </div>
+        <form id="user-form" class="modal-form">
+          <input type="hidden" id="user-id" name="user_id" />
+          <div class="form-group">
+            <label for="phone">手机号/用户名 *</label>
+            <input
+              type="text"
+              id="phone"
+              name="phone"
+              required
+              placeholder="请输入手机号或用户名"
+            />
+          </div>
+          <div class="form-group">
+            <label for="password">密码 *</label>
+            <input
+              type="password"
+              id="password"
+              name="password"
+              required
+              placeholder="请输入密码"
+            />
+          </div>
+          <div class="form-group">
+            <label for="user_nickname">昵称</label>
+            <input
+              type="text"
+              id="user_nickname"
+              name="user_nickname"
+              placeholder="用户昵称"
+            />
+          </div>
+          <div class="form-group">
+            <label for="user_realname">真实姓名</label>
+            <input
+              type="text"
+              id="user_realname"
+              name="user_realname"
+              placeholder="真实姓名"
+            />
+          </div>
+          <div class="form-group checkbox-group">
+            <label>
+              <input type="checkbox" id="active" name="active" checked />
+              启用此账户
+            </label>
+          </div>
+          <div class="form-actions">
+            <button type="button" class="btn btn-secondary" id="modal-cancel">
+              取消
+            </button>
+            <button type="submit" class="btn btn-primary">保存</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="toast-container" id="toast-container"></div>
+
+    <script src="/static/js/app.js"></script>
+  </body>
+</html>
