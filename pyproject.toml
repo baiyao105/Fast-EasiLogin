@@ -8,6 +8,10 @@ dev = [
 ]
 
 [project]
+name = "fast_easilogin"
+version = "0.1.0"
+description = "seewo-fastlogin"
+requires-python = ">=3.11"
 dependencies = [
   "PyYAML ~= 6.0.2",
   "diskcache ~= 5.6.3",
@@ -21,11 +25,13 @@ dependencies = [
   "tomlkit ~= 0.14.0",
   "uvicorn ~=0.44.0"
 ]
-description = "seewo-fastlogin"
-name = "fast_easilogin"
-readme = "README.md"
-requires-python = ">=3.11"
-version = "0.1.0"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/fast_easilogin"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [tool.mypy]
 check_untyped_defs = true
