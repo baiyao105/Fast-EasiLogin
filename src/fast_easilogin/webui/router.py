@@ -1,5 +1,4 @@
-from pathlib import Path
-from typing import Any
+import uuid
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
@@ -11,6 +10,7 @@ from fast_easilogin.shared.store.config import (
     load_users,
     save_users,
     save_users_async,
+    write_config,
 )
 from fast_easilogin.shared.store.models import UserRecord
 from fast_easilogin.webui import STATIC_DIR
@@ -78,8 +78,6 @@ async def create_user(request: Request):
         raise HTTPException(status_code=400, detail={"message": "phone_and_password_required", "statusCode": "400"})
 
     users = load_users()
-    import uuid
-
     user_id = str(uuid.uuid4())[:8]
 
     users[user_id] = UserRecord(
@@ -108,7 +106,7 @@ async def update_user(user_id: str, request: Request):
 
     if "phone" in body:
         user.phone = body["phone"]
-    if "password" in body and body["password"]:
+    if body.get("password"):
         user.password = body["password"]
     if "user_nickname" in body:
         user.user_nickname = body["user_nickname"]
@@ -147,8 +145,6 @@ async def get_settings():
 
 @router.put("/settings")
 async def update_settings(request: Request):
-    from fast_easilogin.shared.store.config import write_config
-
     body = await request.json()
     write_config(body)
     logger.info("更新设置")
