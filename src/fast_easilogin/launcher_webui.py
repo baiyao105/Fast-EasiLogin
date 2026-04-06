@@ -155,14 +155,14 @@ def uninstall_service() -> bool:
 
 
 def get_ports() -> tuple[int, int]:
-    api_port = 24300
-    webui_port = 24301
+
     try:
         settings = load_appsettings_model()
         api_port = int(settings.Global.port)
         webui_port = int(getattr(settings.Global, "webui_port", 24301))
     except Exception:
-        pass
+        api_port = 24300
+        webui_port = 24301
     return api_port, webui_port
 
 
