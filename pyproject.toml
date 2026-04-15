@@ -20,7 +20,7 @@ dependencies = [
   "loguru ~= 0.7.2",
   "orjson ~= 3.11.5",
   "pydantic ~=2.13.0",
-  "python-multipart ~= 0.0.20",
+  "python-multipart~=0.0.26",
   "pywin32 >= 306; platform_system == 'Windows'",
   "tomlkit ~= 0.14.0",
   "uvicorn ~=0.44.0"
