@@ -1,10 +1,12 @@
 import asyncio
 import contextlib
 from contextlib import asynccontextmanager, suppress
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import ORJSONResponse
+from fastapi.responses import FileResponse, ORJSONResponse
+from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
 from fast_easilogin.api.gateway.router import router
@@ -54,9 +56,29 @@ async def add_global_headers(request, call_next):
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Credentials"] = "true"
     response.headers["Access-Control-Allow-Methods"] = "GET,POST,DELETE"
-    response.headers["Content-Type"] = "application/json; charset=UTF-8"
     return response
 
 
+_STATIC = Path(__file__).resolve().parent / "static"
+
 app.add_middleware(GZipMiddleware, minimum_size=500)
 app.include_router(router)
+app.mount("/static", StaticFiles(directory=str(_STATIC)), name="webui_static")
+
+
+@app.get("/")
+async def webui_index():
+    return FileResponse(_STATIC / "index.html")
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    _s = load_appsettings_model()
+    uvicorn.run(
+        app,
+        host="127.0.0.1",
+        port=int(_s.Global.port),
+        server_header=False,
+        log_config=None,
+    )

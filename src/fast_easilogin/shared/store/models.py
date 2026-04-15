@@ -33,8 +33,8 @@ class UserRecord(BaseModel):
 class SaveUserBody(BaseModel):
     userid: str
     password: str
-    user_name: str
-    head_img: str
+    user_name: str = ""
+    head_img: str = ""
 
 
 class UserIdentityInfo(BaseModel):
