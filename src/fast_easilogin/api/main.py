@@ -60,3 +60,16 @@ async def add_global_headers(request, call_next):
 
 app.add_middleware(GZipMiddleware, minimum_size=500)
 app.include_router(router)
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    _s = load_appsettings_model()
+    uvicorn.run(
+        app,
+        host="127.0.0.1",
+        port=int(_s.Global.port),
+        server_header=False,
+        log_config=None,
+    )
