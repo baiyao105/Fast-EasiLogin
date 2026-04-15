@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Fast EasiLogin</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <header class="header">
+        <h1>Fast EasiLogin</h1>
+        <p class="sub">本地账号与 SSO 管理 · 仅监听本机</p>
+      </header>
+
+      <main class="grid">
+        <section class="card">
+          <h2>已启用账号</h2>
+          <p class="hint">来自 <code>/getData/SSOLOGIN</code>（仅 active）</p>
+          <div id="list-toolbar">
+            <button type="button" id="btn-refresh" class="btn primary">刷新列表</button>
+          </div>
+          <ul id="account-list" class="account-list"></ul>
+          <p id="list-empty" class="empty hidden">暂无账号，请在右侧添加。</p>
+        </section>
+
+        <section class="card">
+          <h2>添加 / 更新账号</h2>
+          <p class="hint">只需手机号与密码；登录成功后程序会用 token 自动补全昵称与头像。</p>
+          <form id="form-save" class="form">
+            <label>手机号 <input name="userid" type="text" autocomplete="username" required /></label>
+            <label>密码 <input name="password" type="password" autocomplete="current-password" required /></label>
+            <button type="submit" class="btn primary">保存</button>
+          </form>
+          <pre id="save-out" class="out" hidden></pre>
+        </section>
+
+        <section class="card span-2">
+          <h2>聚合用户信息</h2>
+          <p class="hint">对应 <code>POST /user/info</code></p>
+          <form id="form-info" class="form form-row">
+            <label>用户 ID <input name="user_id" type="text" required /></label>
+            <label>密码 <input name="password" type="password" required /></label>
+            <label class="flex-grow"
+              >字段（逗号分隔，留空为全部）
+              <input name="fields" type="text" placeholder="nickName,phone,uid" />
+            </label>
+            <button type="submit" class="btn">查询</button>
+          </form>
+          <pre id="info-out" class="out" hidden></pre>
+        </section>
+      </main>
+
+      <footer class="footer">
+        <span id="status"></span>
+      </footer>
+    </div>
+    <script src="/static/app.js" defer></script>
+  </body>
+</html>

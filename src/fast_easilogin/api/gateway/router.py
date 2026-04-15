@@ -166,7 +166,7 @@ async def save_user(body: SaveUserBody | AppSaveDataBody, background_tasks: Back
     if isinstance(body, SaveUserBody):
         prev = next((r for r in users.values() if r.phone == body.userid), None)
         key_uid = prev.user_id if prev else None
-        active_val = prev.active if prev else False
+        active_val = prev.active if prev else True
         users[key_uid or body.userid] = UserRecord(
             user_id=(key_uid or body.userid),
             active=active_val,
