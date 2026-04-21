@@ -23,7 +23,7 @@ dependencies = [
   "python-multipart ~= 0.0.20",
   "pywin32 >= 306; platform_system == 'Windows'",
   "tomlkit ~= 0.14.0",
-  "uvicorn ~=0.44.0"
+  "uvicorn ~=0.45.0"
 ]
 description = "seewo-fastlogin"
 name = "fast_easilogin"
