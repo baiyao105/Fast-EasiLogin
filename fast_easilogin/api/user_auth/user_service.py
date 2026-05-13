@@ -57,12 +57,6 @@ async def fetch_user_info_with_token(token: str) -> dict[str, Any]:
         return cast(dict[str, Any], result)
 
 
-async def get_user_info(userid: str, password_plain: str, _userid: str | None = None) -> dict[str, Any]:
-    login = await user_login(userid, password_plain, _userid=_userid)
-    token = login.get("token")
-    return await fetch_user_info_with_token(token) if token else {}
-
-
 def select_fields(data: dict[str, Any], fields: list[str] | None) -> dict[str, Any]:
     if not fields:
         return data
@@ -130,7 +124,10 @@ async def get_aggregated_user_info(userid: str, password_plain: str, fields: lis
         else None,
     )
     full = agg.model_dump(exclude_none=True)
+    full.pop("token", None)
     ttl = max(30, int(random.uniform(0.8, 1.2) * min(LOGIN_TTL, USERINFO_TTL)))
     with contextlib.suppress(Exception):
         await rc.set(f"agg:{cache_key}", json.dumps(full, ensure_ascii=False), ex=ttl)
-    return select_fields(full, fields)
+    agg_with_token = dict(full)
+    agg_with_token["token"] = token
+    return select_fields(agg_with_token, fields)

@@ -1,8 +1,9 @@
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Response
 from loguru import logger
 
 from fast_easilogin.api.user_auth.auth_service import user_login
 from fast_easilogin.api.user_auth.user_service import fetch_user_info_with_token, get_aggregated_user_info
+from fast_easilogin.shared.constants import TOKEN_OFFLINE_SUFFIX
 from fast_easilogin.shared.store.config import find_user, load_users, save_users_async
 from fast_easilogin.shared.store.models import AppSaveDataBody, SaveUserBody, UserInfoRequest, UserRecord
 
@@ -108,7 +109,6 @@ async def sso_login_user(
         path="/",
         httponly=True,
     )
-    uid = token_info.get("uid")
     logger.info(
         "账户被登录: usrid({}) : 账户信息({}, {}, {})",
         userid,
@@ -128,13 +128,13 @@ async def sso_login_user(
 
 @logger.catch
 @router.get("/getData/SSOLOGOUT")
-async def sso_logout(request: Request, response: Response, pt_type: str | None = None):
+async def sso_logout(pt_type: str | None = None):
     return {"message": "success", "statusCode": "200"}
 
 
 @logger.catch
 @router.delete("/deleteData")
-async def delete_data(request: Request, response: Response):
+async def delete_data():
     return {"message": "success", "statusCode": "200"}
 
 
@@ -143,11 +143,13 @@ async def delete_data(request: Request, response: Response):
 async def save_user(body: SaveUserBody | AppSaveDataBody, background_tasks: BackgroundTasks):
     users = load_users()
     if isinstance(body, SaveUserBody):
-        prev = next((r for r in users.values() if r.phone == body.userid), None)
-        key_uid = prev.user_id if prev else None
+        key_uid = body.userid
+        prev = users.get(body.userid) or next((r for r in users.values() if r.phone == body.userid), None)
+        if prev:
+            key_uid = prev.user_id
         active_val = prev.active if prev else True
-        users[key_uid or body.userid] = UserRecord(
-            user_id=(key_uid or body.userid),
+        users[key_uid] = UserRecord(
+            user_id=key_uid,
             active=active_val,
             phone=body.userid,
             password=body.password,
@@ -156,18 +158,18 @@ async def save_user(body: SaveUserBody | AppSaveDataBody, background_tasks: Back
             head_img=body.head_img,
             pt_timestamp=(prev.pt_timestamp if prev else None),
         )
-        await save_users_async(users, user_ids=[key_uid or body.userid])
-        logger.info("更新用户信息: phone={} user_id={}", body.userid, key_uid or "-")
+        await save_users_async(users, user_ids=[key_uid])
+        logger.info("更新用户信息: phone={} user_id={}", body.userid, key_uid)
         return {"message": "success", "statusCode": "200"}
     uid = body.pt_userid
     rec = users.get(uid)
-    if rec and rec.pt_timestamp is not None and rec.pt_timestamp >= body.pt_timestamp:
+    if rec and rec.pt_timestamp is not None and rec.pt_timestamp > body.pt_timestamp:
         return {"message": "success", "statusCode": "200"}
     new_name = body.pt_nickname or (rec.user_nickname if rec else "")
     new_img = body.pt_photourl or (rec.head_img if rec else "")
     real_name = rec.user_realname if rec else ""
     candidate_token = str(body.pt_token or "")
-    if candidate_token and (not candidate_token.endswith("-offline")):
+    if candidate_token and (not candidate_token.endswith(TOKEN_OFFLINE_SUFFIX)):
         fetched_once = await fetch_user_info_with_token(candidate_token)
         real_name = fetched_once.get("realName") or real_name
     key = uid
@@ -184,7 +186,7 @@ async def save_user(body: SaveUserBody | AppSaveDataBody, background_tasks: Back
     )
     await save_users_async(users, user_ids=[key])
 
-    if body.pt_token and not body.pt_token.endswith("-offline"):
+    if body.pt_token and not body.pt_token.endswith(TOKEN_OFFLINE_SUFFIX):
         background_tasks.add_task(
             _update_user_profile,
             uid,

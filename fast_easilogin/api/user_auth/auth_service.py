@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import secrets
 from typing import Any
@@ -22,7 +23,7 @@ async def user_login(userid: str, password_plain: str, _userid: str | None = Non
     headers = {
         "Content-Type": "application/json; charset=utf-8",
         "X-APM-TraceId": secrets.token_hex(16),
-        "Cookie": "x-auth-app=EasiNote5; x-auth-token=; acw_tc=",
+        "Cookie": "x-auth-app=EasiNote5; x-auth-token=",
     }
     try:
         resp = await request_with_retry("POST", LOGIN_URL, headers=headers, json=payload)
@@ -31,6 +32,8 @@ async def user_login(userid: str, password_plain: str, _userid: str | None = Non
     except (RequestFailedError, CircuitOpenError) as err:
         logger.error("login请求失败: userid={} err={}", userid, err)
         raise HTTPException(status_code=504, detail={"message": "network_error", "statusCode": "504"}) from err
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        raise
     except Exception as err:
         logger.error("获取token异常: userid={} err={}", userid, err)
         raise HTTPException(status_code=504, detail={"message": "network_error", "statusCode": "504"}) from err
@@ -48,7 +51,7 @@ async def user_login(userid: str, password_plain: str, _userid: str | None = Non
                 if target_user and target_user.active:
                     target_user.active = False
                     users[target_user.user_id] = target_user
-                    await save_users_async(users, user_ids=[target_user.user_id])
+                    await save_users_async({target_user.user_id: target_user})
                     logger.info("因密码错误自动禁用账户: user_id={}", target_user.user_id)
             except OSError as e:
                 logger.error("自动禁用账户失败: {}", str(e))

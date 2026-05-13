@@ -14,16 +14,24 @@ import tomlkit
 import yaml
 from loguru import logger
 
-from fast_easilogin.shared.basic_dir import APPSETTINGS_FILE, APPSETTINGS_TOML, DATA_DIR, USER_DATA_DIR, fmt_diff
+from fast_easilogin.shared.basic_dir import APPSETTINGS_FILE, APPSETTINGS_TOML, DATA_DIR, USER_DATA_DIR
 from fast_easilogin.shared.store.models import CURRENT_SCHEMA_VERSION, AppSettings, UserRecord
 
 toml_dumps = tomlkit.dumps
 
 
-def _atomic_write(path: Path, data: str) -> None:
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(data, encoding="utf-8")
-    tmp.replace(path)
+def _atomic_write(path: Path, data: str, max_retries: int = 3) -> None:
+    for attempt in range(max_retries):
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        try:
+            tmp.write_text(data, encoding="utf-8")
+            tmp.replace(path)
+        except PermissionError:
+            if attempt == max_retries - 1:
+                raise
+            time.sleep(0.1 * (attempt + 1))
+        else:
+            return
 
 
 class AppSettingsManager:
@@ -77,7 +85,7 @@ class AppSettingsManager:
 
     def _current_mtime(self) -> float:
         if self.toml_path.exists():
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(OSError):
                 return self.toml_path.stat().st_mtime
         return 0.0
 
@@ -140,8 +148,7 @@ class InMemoryKVCache:
                 return None
             val, exp = item
             if exp is not None and exp <= now:
-                with contextlib.suppress(Exception):
-                    del self._data[key]
+                del self._data[key]
                 return None
             self._data.move_to_end(key, last=True)
             return val
@@ -156,11 +163,10 @@ class InMemoryKVCache:
                 del self._data[key]
             self._data[key] = (data, exp)
             while len(self._data) > self._capacity:
-                with contextlib.suppress(Exception):
-                    self._data.popitem(last=False)
+                self._data.popitem(last=False)
 
     async def delete(self, key: str) -> None:
-        with self._lock, contextlib.suppress(Exception):
+        with self._lock:
             del self._data[key]
 
     async def clear(self) -> None:
@@ -173,6 +179,7 @@ class SharedContainer:
         self.users_cache: dict[str, UserRecord] | None = None
         self.users_cache_mtime: float | None = None
         self.mem_cache: InMemoryKVCache | None = None
+        self.phone_index: dict[str, str] | None = None
 
     def get_mem_cache(self) -> InMemoryKVCache:
         if self.mem_cache is not None:
@@ -228,6 +235,9 @@ async def close_cache() -> None:
     cont.mem_cache = None
 
 
+_CACHE_LOCK = threading.Lock()
+
+
 def _latest_profiles_mtime(base_dir: Path) -> float:
     latest = 0.0
     for d in base_dir.glob("*"):
@@ -248,7 +258,11 @@ def _read_user_profile(base: Path, uid: str) -> dict:
     try:
         data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
         return data.get("user_info") or data
-    except Exception:
+    except yaml.YAMLError as e:
+        logger.error("YAML 解析失败: uid={} err={}", uid, e)
+        return {}
+    except OSError as e:
+        logger.error("读取 profile 失败: uid={} err={}", uid, e)
         return {}
 
 
@@ -275,6 +289,7 @@ def load_users() -> dict[str, UserRecord]:
         return cont.users_cache
 
     users: dict[str, UserRecord] = {}
+    phone_index: dict[str, str] = {}
     for d in base.glob("*"):
         if not d.is_dir():
             continue
@@ -282,9 +297,13 @@ def load_users() -> dict[str, UserRecord]:
         info = _read_user_profile(base, uid)
         if not info:
             continue
-        users[uid] = _user_record_from_info(uid, info)
+        record = _user_record_from_info(uid, info)
+        users[uid] = record
+        if record.phone:
+            phone_index[record.phone] = uid
 
     cont.users_cache = users
+    cont.phone_index = phone_index
     cont.users_cache_mtime = mtime
     return users
 
@@ -295,9 +314,10 @@ def find_user(identifier: str, users: dict[str, UserRecord] | None = None) -> Us
     record = users.get(identifier)
     if record:
         return record
-    for u in users.values():
-        if identifier == u.phone:
-            return u
+    cont = _get_container()
+    uid = cont.phone_index.get(identifier) if cont.phone_index else None
+    if uid:
+        return users.get(uid)
     return None
 
 
@@ -333,23 +353,12 @@ def _dump_user_record(base: Path, u: UserRecord) -> None:
     else:
         changed = any((str(prev_info.get(f) or "") != str(payload["user_info"].get(f) or "")) for f in fields)
         if changed:
-            diff = {
-                f: {"from": str(prev_info.get(f) or ""), "to": str(payload["user_info"].get(f) or "")}
-                for f in fields
-                if str(prev_info.get(f) or "") != str(payload["user_info"].get(f) or "")
-            }
+            changed_fields = [
+                f for f in fields if str(prev_info.get(f) or "") != str(payload["user_info"].get(f) or "")
+            ]
             logger.success(
-                "账户配置更新: user_id={} nickname={} changes={}", uid, u.user_nickname or "-", fmt_diff(diff)
+                "账户配置更新: user_id={} nickname={} changes={}", uid, u.user_nickname or "-", changed_fields
             )
-
-
-def _refresh_users_cache(base: Path) -> None:
-    cont = _get_container()
-    mtime = _latest_profiles_mtime(base)
-    if cont.users_cache is not None and cont.users_cache_mtime == mtime:
-        return
-    cont.users_cache = None
-    cont.users_cache_mtime = None
 
 
 def save_users(users: dict[str, UserRecord], user_ids: list[str] | None = None) -> None:
@@ -361,8 +370,10 @@ def save_users(users: dict[str, UserRecord], user_ids: list[str] | None = None) 
     for u in targets:
         _dump_user_record(base, u)
     cont = _get_container()
-    cont.users_cache = users.copy()
-    cont.users_cache_mtime = _latest_profiles_mtime(base)
+    with _CACHE_LOCK:
+        cont.users_cache = users.copy()
+        cont.users_cache_mtime = _latest_profiles_mtime(base)
+        cont.phone_index = {u.phone: u.user_id for u in users.values() if u.phone}
 
 
 async def save_users_async(users: dict[str, UserRecord], user_ids: list[str] | None = None) -> bool:
@@ -372,16 +383,24 @@ async def save_users_async(users: dict[str, UserRecord], user_ids: list[str] | N
 
     ids = set(user_ids) if user_ids is not None else None
 
-    def _write_many():
-        targets = [u for u in users.values() if ids is None or u.user_id in ids]
-        for u in targets:
-            _dump_user_record(base, u)
+    def _write_many() -> bool:
+        try:
+            targets = [u for u in users.values() if ids is None or u.user_id in ids]
+            for u in targets:
+                _dump_user_record(base, u)
+        except OSError as e:
+            logger.error("保存用户数据失败: {}", e)
+            return False
+        else:
+            return True
 
-    await asyncio.to_thread(_write_many)
+    ok = await asyncio.to_thread(_write_many)
     cont = _get_container()
-    cont.users_cache = users.copy()
-    cont.users_cache_mtime = _latest_profiles_mtime(base)
-    return True
+    with _CACHE_LOCK:
+        cont.users_cache = users.copy()
+        cont.users_cache_mtime = _latest_profiles_mtime(base)
+        cont.phone_index = {u.phone: u.user_id for u in users.values() if u.phone}
+    return ok
 
 
 def get_users_mtime() -> float | None:
