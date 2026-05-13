@@ -4,10 +4,8 @@ import asyncio
 import contextlib
 import importlib
 import logging
-import os
 import platform
 import sys
-import threading
 from collections.abc import Callable
 from datetime import UTC, datetime
 from types import FrameType
@@ -17,17 +15,28 @@ from loguru import logger
 
 from fast_easilogin.shared.basic_dir import LOGS_DIR, ensure_data_dirs
 
-_STATE: dict[str, Any] = {
-    "server": None,
-    "stop_event": threading.Event(),
-    "mutex": None,
-    "cfg": {
-        "port": None,
-        "access_log": False,
-        "log_level": "INFO",
-        "settings": None,
-    },
-}
+_server: Any = None
+
+
+def stop_server() -> None:
+    srv = _server
+    if srv is not None:
+        srv.should_exit = True
+        srv.force_exit = True
+    logger.info("服务已停止")
+
+
+def set_server(srv: Any) -> None:
+    global _server  # noqa: PLW0603
+    _server = srv
+
+
+class RuntimeState:
+    def __init__(self):
+        self.mutex: Any = None
+
+
+_STATE = RuntimeState()
 
 
 class InterceptHandler(logging.Handler):
@@ -71,21 +80,8 @@ def setup_logging(file_level: str = "INFO") -> None:
 
     files = sorted(logs_dir.glob("log_*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
     for p in files[3:]:
-        with contextlib.suppress(Exception):
+        with contextlib.suppress(OSError):
             p.unlink()
-
-
-def bridge_uvicorn_logs(level: str = "INFO", *, access_log: bool = False) -> None:
-    logging.getLogger().handlers = [InterceptHandler()]
-    for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
-        lg = logging.getLogger(name)
-        lg.handlers = [InterceptHandler()]
-        lg.propagate = False
-        with contextlib.suppress(Exception):
-            if access_log:
-                lg.setLevel(getattr(logging, (level or "INFO").upper(), logging.INFO))
-            else:
-                lg.setLevel(logging.CRITICAL)
 
 
 def setup_win_eventlog(enable: bool) -> Callable[[str], None] | None:
@@ -94,7 +90,7 @@ def setup_win_eventlog(enable: bool) -> Callable[[str], None] | None:
     try:
         win32evtlog = importlib.import_module("win32evtlog")
         win32evtlogutil = importlib.import_module("win32evtlogutil")
-    except Exception:
+    except ImportError:
         return None
 
     app_name = "fast_easilogin"
@@ -131,7 +127,7 @@ def setup_win_eventlog(enable: bool) -> Callable[[str], None] | None:
     return _report_event
 
 
-def install_global_handlers(report_event: Callable[[str], None] | None) -> None:
+def install_global_handlers(report_event: Callable[[str], None] | None = None) -> None:
     def _excepthook(exc_type, value, tb):
         if exc_type is None or exc_type is KeyboardInterrupt:
             return
@@ -144,11 +140,7 @@ def install_global_handlers(report_event: Callable[[str], None] | None) -> None:
 
     sys.excepthook = _excepthook
 
-    try:
-        loop = asyncio.get_event_loop()
-    except Exception:
-        loop = None
-
+    loop = _get_event_loop()
     if loop is not None:
 
         def _loop_handler(_loop, context):
@@ -169,6 +161,13 @@ def install_global_handlers(report_event: Callable[[str], None] | None) -> None:
             loop.set_exception_handler(_loop_handler)
 
 
+def _get_event_loop():
+    try:
+        return asyncio.get_event_loop()
+    except Exception:
+        return None
+
+
 def ensure_single_instance(name: str = r"Local\SeewoFastLoginSingleInstance") -> bool:
     if platform.system() != "Windows":
         return True
@@ -176,7 +175,7 @@ def ensure_single_instance(name: str = r"Local\SeewoFastLoginSingleInstance") ->
         win32event = importlib.import_module("win32event")
         win32api = importlib.import_module("win32api")
         winerror = importlib.import_module("winerror")
-    except Exception:
+    except ImportError:
         return True
     h = win32event.CreateMutex(None, False, name)
     last_err = 0
@@ -184,48 +183,5 @@ def ensure_single_instance(name: str = r"Local\SeewoFastLoginSingleInstance") ->
         last_err = win32api.GetLastError()
     if last_err == getattr(winerror, "ERROR_ALREADY_EXISTS", 183):
         return False
-    _STATE["mutex"] = h
+    _STATE.mutex = h
     return True
-
-
-def prepare_api_runtime(settings: Any, *, log_level: str = "INFO", access_log: bool = False) -> bool:
-    ok = ensure_single_instance()
-    if not ok:
-        logger.warning("已有运行实例")
-        return False
-    _STATE["cfg"].update(
-        {
-            "settings": settings,
-            "log_level": log_level,
-            "access_log": bool(access_log),
-        }
-    )
-    try:
-        s = settings
-        _STATE["cfg"]["port"] = int(s.Global.port)
-    except Exception as err:
-        logger.exception("初始化运行时失败: {}", str(err))
-        return False
-    bridge_uvicorn_logs(log_level, access_log=bool(access_log))
-    return True
-
-
-def get_api_port() -> int:
-    cfg = _STATE.get("cfg") or {}
-    return int(cfg.get("port") or 0)
-
-
-def register_server(server: Any) -> None:
-    _STATE["server"] = server
-
-
-def stop(status: int = 0, *, force: bool = False) -> None:
-    logger.info("程序退出")
-    _STATE["stop_event"].set()
-    srv = _STATE.get("server")
-    if srv is not None:
-        with contextlib.suppress(Exception):
-            srv.should_exit = True
-            srv.force_exit = True
-    if force:
-        os._exit(status)

@@ -6,7 +6,16 @@ from typing import Any, cast
 
 from loguru import logger
 
-from fast_easilogin.shared.constants import LOGIN_TTL, TOKEN_MASK_MIN_LEN, USERINFO_TTL
+from fast_easilogin.shared.constants import (
+    AUTH_APP_ANDROID,
+    AUTH_REFER_ANDROID,
+    CRYPTO_VERSION,
+    LOGIN_TTL,
+    TOKEN_MASK_MIN_LEN,
+    USER_AGENT_ANDROID,
+    USER_INFO_URL,
+    USERINFO_TTL,
+)
 from fast_easilogin.shared.http_client import request_with_retry
 from fast_easilogin.shared.store.config import find_user, get_cache, load_users
 from fast_easilogin.shared.store.models import AggregatedUserInfo, UserIdentityInfo, UserInfoExtendVo
@@ -16,11 +25,10 @@ from .auth_service import user_login
 
 async def fetch_user_info_with_token(token: str) -> dict[str, Any]:
     rc = get_cache()
-    url = "https://edu.seewo.com/api/v2/user/info"
-    headers = {"X-auth-refer": "EnAppAndroid", "X-Crypto-Version": "1", "User-Agent": "okhttp/3.12.12"}
-    cookies = {"x-auth-app": "EasiNoteAndroid", "x-auth-token": token}
+    headers = {"X-auth-refer": AUTH_REFER_ANDROID, "X-Crypto-Version": CRYPTO_VERSION, "User-Agent": USER_AGENT_ANDROID}
+    cookies = {"x-auth-app": AUTH_APP_ANDROID, "x-auth-token": token}
     try:
-        resp = await request_with_retry("GET", url, headers=headers, cookies=cookies)
+        resp = await request_with_retry("GET", USER_INFO_URL, headers=headers, cookies=cookies)
         data = resp.json()
         result = data.get("data", {})
         uid = str(result.get("uid") or "")
@@ -53,14 +61,6 @@ async def get_user_info(userid: str, password_plain: str, _userid: str | None = 
     login = await user_login(userid, password_plain, _userid=_userid)
     token = login.get("token")
     return await fetch_user_info_with_token(token) if token else {}
-
-
-async def get_user_info_by_userid(userid: str) -> dict[str, Any]:
-    users = load_users()
-    record = find_user(userid, users)
-    if not record:
-        return {}
-    return await get_user_info(record.phone or userid, record.password, _userid=record.user_id)
 
 
 def select_fields(data: dict[str, Any], fields: list[str] | None) -> dict[str, Any]:

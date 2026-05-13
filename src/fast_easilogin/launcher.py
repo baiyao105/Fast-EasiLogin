@@ -5,7 +5,7 @@ import win32service
 
 from fast_easilogin.runtime.mode import parse_mode
 from fast_easilogin.runtime.service_runner import run_api, run_service
-from fast_easilogin.runtime.utils import stop
+from fast_easilogin.runtime.utils import stop_server
 from fast_easilogin.shared.service_manager import WindowsServiceBase, WindowsServiceManager
 
 
@@ -39,12 +39,12 @@ class AppService(WindowsServiceBase):
     def SvcStop(self):
         """服务停止回调"""
         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
-        stop()
+        stop_server()
         win32event.SetEvent(getattr(self, "hWaitStop", win32event.CreateEvent(None, 0, 0, None)))
 
     def SvcDoRun(self):
         """服务运行主逻辑"""
-        run_service(log_level="INFO", access_log=False, with_webui=False)
+        run_service(log_level="INFO", access_log=False)
 
 
 if __name__ == "__main__":

@@ -1,17 +1,15 @@
 import asyncio
-import contextlib
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, ORJSONResponse
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
 from fast_easilogin.api.gateway.router import router
-from fast_easilogin.api.gateway.state import token_renew_job
-from fast_easilogin.runtime.utils import stop
+from fast_easilogin.runtime.utils import stop_server
 from fast_easilogin.shared.basic_dir import ensure_data_dirs
 from fast_easilogin.shared.http_client import close_http_client, init_http_client
 from fast_easilogin.shared.store.config import clear_cache, close_cache, load_appsettings_model
@@ -22,21 +20,18 @@ async def lifespan(app: FastAPI):
     ensure_data_dirs()
     await init_http_client()
     await clear_cache()
-    with contextlib.suppress(Exception):
-        s_local = load_appsettings_model()
-        app.state.token_renew = asyncio.create_task(token_renew_job(int(s_local.Global.token_check_interval)))
     try:
-        s = load_appsettings_model()
-        srv_port = int(s.Global.port)
+        settings = load_appsettings_model()
+        srv_port = int(settings.Global.port)
         logger.success("服务启动成功: url=http://{}:{}", "127.0.0.1", srv_port)
     except Exception as e:
-        logger.exception(f"服务启动失败: {e}")
+        logger.exception("服务启动失败: {}", e)
     try:
         yield
-        stop()
     except asyncio.CancelledError:
         pass
     finally:
+        stop_server()
         await close_http_client()
         await clear_cache()
         await close_cache()
@@ -47,7 +42,7 @@ async def lifespan(app: FastAPI):
                 await t
 
 
-app = FastAPI(default_response_class=ORJSONResponse, lifespan=lifespan)
+app = FastAPI(lifespan=lifespan)
 
 
 @app.middleware("http")

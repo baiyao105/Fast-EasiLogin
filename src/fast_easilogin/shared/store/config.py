@@ -5,7 +5,7 @@ import contextlib
 import json
 import threading
 import time
-import tomllib  # py311
+import tomllib
 from collections import OrderedDict
 from pathlib import Path
 from typing import cast
@@ -21,18 +21,29 @@ toml_dumps = tomlkit.dumps
 
 
 def _atomic_write(path: Path, data: str) -> None:
-    """原子写入文件"""
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(data, encoding="utf-8")
     tmp.replace(path)
 
 
 class AppSettingsManager:
-    """应用配置管理器"""
+    _instance: AppSettingsManager | None = None
+    _lock = threading.Lock()
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+        return cls._instance
 
     def __init__(self, toml_path: Path | None = None, legacy_json_path: Path | None = None):
-        self.toml_path = toml_path or APPSETTINGS_TOML
-        self.legacy_json_path = legacy_json_path or APPSETTINGS_FILE
+        if not hasattr(self, "_initialized"):
+            self.toml_path = toml_path or APPSETTINGS_TOML
+            self.legacy_json_path = legacy_json_path or APPSETTINGS_FILE
+            self._cached: AppSettings | None = None
+            self._cache_mtime: float = 0.0
+            self._initialized = True
 
     def _load_toml(self) -> dict:
         p = self.toml_path
@@ -46,7 +57,6 @@ class AppSettingsManager:
             return {}
 
     def _merge(self, file_cfg: dict) -> dict:
-        """深合并"""
         defaults = AppSettings().model_dump()
         merged = defaults.copy()
         fc = dict(file_cfg or {})
@@ -65,12 +75,22 @@ class AppSettingsManager:
             logger.error("配置校验失败: {}", str(err))
             raise
 
+    def _current_mtime(self) -> float:
+        if self.toml_path.exists():
+            with contextlib.suppress(Exception):
+                return self.toml_path.stat().st_mtime
+        return 0.0
+
     def write(self, cfg: dict) -> None:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         text = toml_dumps(cfg)
         _atomic_write(self.toml_path, text)
+        self._cached = None
 
     def load(self) -> AppSettings:
+        mtime = self._current_mtime()
+        if self._cached is not None and self._cache_mtime == mtime:
+            return self._cached
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         file_cfg = self._load_toml()
         if not file_cfg:
@@ -81,44 +101,10 @@ class AppSettingsManager:
                 logger.error("写入 TOML 失败: err={}", str(err))
             file_cfg = merged
         cfg = self._merge(file_cfg)
-        return self._validate(cfg)
-
-
-class UserDataManager:
-    """用户数据管理"""
-
-    def __init__(self, base_dir: Path | None = None):
-        self.base_dir = base_dir or USER_DATA_DIR
-        self.base_dir.mkdir(parents=True, exist_ok=True)
-
-    def user_dir(self, uid: str) -> Path:
-        d = self.base_dir / uid
-        d.mkdir(parents=True, exist_ok=True)
-        return d
-
-    def profile_path(self, uid: str) -> Path:
-        return self.user_dir(uid) / f"{uid}_profile.yaml"
-
-    def validate_profile(self, data: dict) -> bool:
-        return isinstance(data, dict)
-
-    def read_profile(self, uid: str) -> dict:
-        p = self.profile_path(uid)
-        if not p.exists():
-            return {}
-        try:
-            return yaml.safe_load(p.read_text(encoding="utf-8")) or {}
-        except Exception as err:
-            logger.error("读取用户配置失败: uid={} err={}", uid, str(err))
-            return {}
-
-    def write_profile(self, uid: str, data: dict) -> None:
-        if not self.validate_profile(data):
-            raise ValueError()
-        text = yaml.safe_dump(data, allow_unicode=True, sort_keys=False)
-        tmp = self.profile_path(uid).with_suffix(".yaml.tmp")
-        tmp.write_text(text, encoding="utf-8")
-        tmp.replace(self.profile_path(uid))
+        app_settings = self._validate(cfg)
+        self._cached = app_settings
+        self._cache_mtime = mtime
+        return app_settings
 
 
 def write_config(cfg: dict) -> None:
@@ -130,7 +116,6 @@ def load_appsettings_model() -> AppSettings:
 
 
 def load_appsettings() -> dict:
-    """返回配置的 dict 形式"""
     return load_appsettings_model().model_dump()
 
 
@@ -139,15 +124,12 @@ def ensure_data_dir() -> None:
 
 
 class InMemoryKVCache:
-    """仅内存的KV缓存(线程安全), 只允许缓存用户信息内容"""
-
     def __init__(self, capacity: int):
         self._lock = threading.RLock()
         self._capacity = max(1, int(capacity or 1))
         self._data: OrderedDict[str, tuple[bytes, float | None]] = OrderedDict()
 
     def _allowed(self, key: str) -> bool:
-        # 只允许缓存用户数据内容
         return key.startswith(("agg:", "userinfo:last:"))
 
     async def get(self, key: str) -> bytes | None:
@@ -187,15 +169,12 @@ class InMemoryKVCache:
 
 
 class SharedContainer:
-    """共享容器: 用户内存缓存与用户列表缓存"""
-
     def __init__(self):
         self.users_cache: dict[str, UserRecord] | None = None
         self.users_cache_mtime: float | None = None
         self.mem_cache: InMemoryKVCache | None = None
 
     def get_mem_cache(self) -> InMemoryKVCache:
-        """获取内存缓存实例"""
         if self.mem_cache is not None:
             return self.mem_cache
         capacity = int(load_appsettings_model().Global.cache_max_entries)
@@ -203,25 +182,25 @@ class SharedContainer:
         return self.mem_cache
 
 
-_CONTAINER_REF: list[SharedContainer] = []
+_CONTAINER: SharedContainer | None = None
+_CONTAINER_LOCK = threading.Lock()
 
 
 def _get_container() -> SharedContainer:
-    """获取全局容器单例"""
-    if _CONTAINER_REF:
-        return _CONTAINER_REF[0]
-    _CONTAINER_REF.append(SharedContainer())
-    return _CONTAINER_REF[0]
+    global _CONTAINER  # noqa: PLW0603
+    if _CONTAINER is None:
+        with _CONTAINER_LOCK:
+            if _CONTAINER is None:
+                _CONTAINER = SharedContainer()
+    return _CONTAINER
 
 
 def get_cache():
-    """获取全局内存缓存实例"""
     cont = _get_container()
     return cont.get_mem_cache()
 
 
 async def cache_json_get(key: str) -> dict:
-    """读取 JSON 值"""
     r = get_cache()
     raw = await r.get(key)
     if not raw:
@@ -233,36 +212,23 @@ async def cache_json_get(key: str) -> dict:
 
 
 async def cache_json_set(key: str, value: dict, ex: int | None = None) -> None:
-    """写入 dict 为 JSON 值"""
     r = get_cache()
     data = json.dumps(value, ensure_ascii=False)
     await r.set(key, data, ex=ex)
 
 
 async def clear_cache() -> None:
-    """清空内存缓存内容"""
     cont = _get_container()
     r = cont.get_mem_cache()
     await r.clear()
 
 
 async def close_cache() -> None:
-    """关闭内存缓存"""
     cont = _get_container()
     cont.mem_cache = None
 
 
-# token缓存相关逻辑已移除
-
-
-# 统计磁盘缓存键功能已移除
-
-
-# 收集磁盘缓存键功能已移除
-
-
 def _latest_profiles_mtime(base_dir: Path) -> float:
-    """返回用户 profile.yaml 的最新修改时间, 没有文件时返回 0."""
     latest = 0.0
     for d in base_dir.glob("*"):
         if not d.is_dir():
@@ -270,14 +236,36 @@ def _latest_profiles_mtime(base_dir: Path) -> float:
         uid = d.name
         p = base_dir / uid / f"{uid}_profile.yaml"
         if p.exists():
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(OSError):
                 latest = max(latest, p.stat().st_mtime)
     return latest
 
 
+def _read_user_profile(base: Path, uid: str) -> dict:
+    p = base / uid / f"{uid}_profile.yaml"
+    if not p.exists():
+        return {}
+    try:
+        data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+        return data.get("user_info") or data
+    except Exception:
+        return {}
+
+
+def _user_record_from_info(uid: str, info: dict) -> UserRecord:
+    return UserRecord(
+        user_id=uid,
+        active=bool(info.get("active", True)),
+        phone=str(info.get("phone") or ""),
+        password=str(info.get("password") or ""),
+        user_nickname=str(info.get("user_nickname") or info.get("user_name") or ""),
+        user_realname=(info.get("user_realname") or None),
+        head_img=str(info.get("head_img") or ""),
+        pt_timestamp=(info.get("pt_timestamp") or None),
+    )
+
+
 def load_users() -> dict[str, UserRecord]:
-    """读取所有用户的 profile.yaml 为 UserRecord 字典."""
-    # Fixme:todo:缓存
     ensure_data_dir()
     base = USER_DATA_DIR
     base.mkdir(parents=True, exist_ok=True)
@@ -291,24 +279,10 @@ def load_users() -> dict[str, UserRecord]:
         if not d.is_dir():
             continue
         uid = d.name
-        p = base / uid / f"{uid}_profile.yaml"
-        if not p.exists():
+        info = _read_user_profile(base, uid)
+        if not info:
             continue
-        try:
-            data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
-        except Exception:
-            data = {}
-        info = data.get("user_info") or {}
-        users[uid] = UserRecord(
-            user_id=uid,
-            active=bool(info.get("active", True)),
-            phone=str(info.get("phone") or ""),
-            password=str(info.get("password") or ""),
-            user_nickname=str(info.get("user_nickname") or info.get("user_name") or ""),
-            user_realname=(info.get("user_realname") or None),
-            head_img=str(info.get("head_img") or ""),
-            pt_timestamp=(info.get("pt_timestamp") or None),
-        )
+        users[uid] = _user_record_from_info(uid, info)
 
     cont.users_cache = users
     cont.users_cache_mtime = mtime
@@ -316,139 +290,89 @@ def load_users() -> dict[str, UserRecord]:
 
 
 def find_user(identifier: str, users: dict[str, UserRecord] | None = None) -> UserRecord | None:
-    """通过 user_id 或 phone 查找用户"""
-    # Fixme: todo:反向索引建立器
     if users is None:
         users = load_users()
-    if identifier in users:
-        return users[identifier]
+    record = users.get(identifier)
+    if record:
+        return record
     for u in users.values():
-        if identifier == u.user_id or identifier == u.phone:  # noqa: PLR1714
+        if identifier == u.phone:
             return u
     return None
 
 
-def save_users(users: dict[str, UserRecord]) -> None:
-    """保存用户列表到各自的 profile.yaml."""
+def _dump_user_record(base: Path, u: UserRecord) -> None:
+    uid = u.user_id
+    if not uid:
+        return
+    d = base / uid
+    d.mkdir(parents=True, exist_ok=True)
+    p = d / f"{uid}_profile.yaml"
+    prev_info = _read_user_profile(base, uid)
+    created = not p.exists()
+    payload = {
+        "user_info": {
+            "active": u.active,
+            "phone": u.phone,
+            "password": u.password,
+            "user_nickname": u.user_nickname,
+            "user_realname": u.user_realname,
+            "head_img": u.head_img,
+            "pt_timestamp": u.pt_timestamp,
+            "user_id": uid,
+        }
+    }
+    text = yaml.safe_dump(payload, allow_unicode=True, sort_keys=False)
+    tmp = p.with_suffix(".yaml.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(p)
+
+    fields = ["active", "phone", "password", "user_nickname", "user_realname", "head_img", "user_id"]
+    if created:
+        logger.success("创建账户配置: user_id={} nickname={}", uid, u.user_nickname or "-")
+    else:
+        changed = any((str(prev_info.get(f) or "") != str(payload["user_info"].get(f) or "")) for f in fields)
+        if changed:
+            diff = {
+                f: {"from": str(prev_info.get(f) or ""), "to": str(payload["user_info"].get(f) or "")}
+                for f in fields
+                if str(prev_info.get(f) or "") != str(payload["user_info"].get(f) or "")
+            }
+            logger.success(
+                "账户配置更新: user_id={} nickname={} changes={}", uid, u.user_nickname or "-", fmt_diff(diff)
+            )
+
+
+def _refresh_users_cache(base: Path) -> None:
+    cont = _get_container()
+    mtime = _latest_profiles_mtime(base)
+    if cont.users_cache is not None and cont.users_cache_mtime == mtime:
+        return
+    cont.users_cache = None
+    cont.users_cache_mtime = None
+
+
+def save_users(users: dict[str, UserRecord], user_ids: list[str] | None = None) -> None:
     ensure_data_dir()
     base = USER_DATA_DIR
     base.mkdir(parents=True, exist_ok=True)
-
-    def _dump(u: UserRecord) -> None:
-        uid = u.user_id
-        if not uid:
-            return
-        d = base / uid
-        d.mkdir(parents=True, exist_ok=True)
-        p = d / f"{uid}_profile.yaml"
-        prev: dict = {}
-        created = not p.exists()
-        if not created:
-            try:
-                prev = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
-            except Exception:
-                prev = {}
-        prev_info = dict(prev.get("user_info") or prev)
-        payload = {
-            "user_info": {
-                "active": u.active,
-                "phone": u.phone,
-                "password": u.password,
-                "user_nickname": u.user_nickname,
-                "user_realname": u.user_realname,
-                "head_img": u.head_img,
-                "pt_timestamp": u.pt_timestamp,
-                "user_id": uid,
-            }
-        }
-        text = yaml.safe_dump(payload, allow_unicode=True, sort_keys=False)
-        tmp = p.with_suffix(".yaml.tmp")
-        tmp.write_text(text, encoding="utf-8")
-        tmp.replace(p)
-        fields = ["active", "phone", "password", "user_nickname", "user_realname", "head_img", "user_id"]
-        if created:
-            logger.success("创建账户配置: user_id={} nickname={}", uid, u.user_nickname or "-")
-        else:
-            changed = any((str(prev_info.get(f) or "") != str(payload["user_info"].get(f) or "")) for f in fields)
-            if changed:
-                diff = {
-                    f: {
-                        "from": str(prev_info.get(f) or ""),
-                        "to": str(payload["user_info"].get(f) or ""),
-                    }
-                    for f in fields
-                    if str(prev_info.get(f) or "") != str(payload["user_info"].get(f) or "")
-                }
-                logger.success(
-                    "账户配置更新: user_id={} nickname={} changes={}", uid, u.user_nickname or "-", fmt_diff(diff)
-                )
-
-    for u in users.values():
-        _dump(u)
-
+    targets = [u for u in users.values() if user_ids is None or u.user_id in user_ids]
+    for u in targets:
+        _dump_user_record(base, u)
     cont = _get_container()
     cont.users_cache = users.copy()
     cont.users_cache_mtime = _latest_profiles_mtime(base)
 
 
-async def save_users_async(users: dict[str, UserRecord], expected_mtime: float | None = None) -> bool:
-    """异步保存用户列表到各自的 profile.yaml."""
+async def save_users_async(users: dict[str, UserRecord], user_ids: list[str] | None = None) -> bool:
     ensure_data_dir()
     base = USER_DATA_DIR
     base.mkdir(parents=True, exist_ok=True)
 
-    def _write_many() -> None:
-        for u in users.values():
-            uid = u.user_id
-            if not uid:
-                continue
-            d = base / uid
-            d.mkdir(parents=True, exist_ok=True)
-            p = d / f"{uid}_profile.yaml"
-            prev: dict = {}
-            created = not p.exists()
-            if not created:
-                try:
-                    prev = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
-                except Exception:
-                    prev = {}
-            prev_info = dict(prev.get("user_info") or prev)
-            payload = {
-                "user_info": {
-                    "active": u.active,
-                    "phone": u.phone,
-                    "password": u.password,
-                    "user_nickname": u.user_nickname,
-                    "user_realname": u.user_realname,
-                    "head_img": u.head_img,
-                    "pt_timestamp": u.pt_timestamp,
-                    "user_id": uid,
-                }
-            }
-            text = yaml.safe_dump(payload, allow_unicode=True, sort_keys=False)
-            tmp = p.with_suffix(".yaml.tmp")
-            tmp.write_text(text, encoding="utf-8")
-            tmp.replace(p)
-            fields = ["active", "phone", "password", "user_nickname", "user_realname", "head_img", "user_id"]
-            if created:
-                logger.success("创建账户配置: user_id={} nickname={}", uid, u.user_nickname or "-")
-            else:
-                changed = any((str(prev_info.get(f) or "") != str(payload["user_info"].get(f) or "")) for f in fields)
-                if changed:
-                    diff = {
-                        f: {
-                            "from": str(prev_info.get(f) or ""),
-                            "to": str(payload["user_info"].get(f) or ""),
-                        }
-                        for f in fields
-                        if str(prev_info.get(f) or "") != str(payload["user_info"].get(f) or "")
-                    }
-                    logger.trace(
-                        "账户配置更新: user_id={} | nickname={} | 变更={}",
-                        uid,
-                        u.user_nickname or "-",
-                        ", ".join(f"{k}: {v['from']} -> {v['to']}" for k, v in diff.items()),
-                    )
+    def _write_many():
+        targets = [u for u in users.values() if user_ids is None or u.user_id in user_ids]
+        for u in targets:
+            _dump_user_record(base, u)
 
     await asyncio.to_thread(_write_many)
     cont = _get_container()
@@ -458,7 +382,6 @@ async def save_users_async(users: dict[str, UserRecord], expected_mtime: float |
 
 
 def get_users_mtime() -> float | None:
-    """返回用户 profile.yaml 的最新修改时间, 若无返回 None."""
     ensure_data_dir()
     base = USER_DATA_DIR
     base.mkdir(parents=True, exist_ok=True)

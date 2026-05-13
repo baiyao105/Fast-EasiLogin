@@ -95,9 +95,10 @@ class HttpClientManager:
     ) -> httpx.Response:
         host = self._host_from_url(url)
         client = self._client or httpx.AsyncClient(timeout=CLIENT_TIMEOUT, limits=CLIENT_LIMITS, http2=CLIENT_HTTP2)
+        last_err: Exception | None = None
         for attempt in range(max_attempts):
             if self._should_block(host):
-                raise CircuitOpenError()
+                raise CircuitOpenError(f"熔断host={host}")
             try:
                 if method == "GET":
                     r = await client.get(url, headers=headers, cookies=cookies)
@@ -105,16 +106,18 @@ class HttpClientManager:
                     r = await client.post(url, headers=headers, cookies=cookies, json=json)
                 if r.status_code >= HTTP_SERVER_ERROR:
                     self._record_failure(host)
+                    last_err = RequestFailedError(f"服务端错误: url={url} status={r.status_code}")
                     await asyncio.sleep(backoff_base * (2**attempt))
                     continue
-            except Exception:
+            except Exception as e:
                 self._record_failure(host)
+                last_err = e
                 await asyncio.sleep(backoff_base * (2**attempt))
                 continue
             else:
                 self._record_success(host)
                 return r
-        raise RequestFailedError()
+        raise RequestFailedError(f"请求失败, 已达最大重试次数{max_attempts}: url={url}") from last_err  # noqa: TRY003
 
 
 _HTTP_MANAGER = HttpClientManager()

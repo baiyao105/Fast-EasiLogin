@@ -15,11 +15,13 @@ class TokenMissingError(Exception):
 
 
 class CircuitOpenError(Exception):
-    pass
+    def __init__(self, message: str = "熔断器已打开, 请求被拦截"):
+        super().__init__(message)
 
 
 class RequestFailedError(Exception):
-    pass
+    def __init__(self, message: str = "请求失败, 已达最大重试次数"):
+        super().__init__(message)
 
 
 def deprecated(reason="此函数已弃用"):
