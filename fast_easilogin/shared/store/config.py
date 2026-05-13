@@ -356,7 +356,8 @@ def save_users(users: dict[str, UserRecord], user_ids: list[str] | None = None) 
     ensure_data_dir()
     base = USER_DATA_DIR
     base.mkdir(parents=True, exist_ok=True)
-    targets = [u for u in users.values() if user_ids is None or u.user_id in user_ids]
+    ids = set(user_ids) if user_ids is not None else None
+    targets = [u for u in users.values() if ids is None or u.user_id in ids]
     for u in targets:
         _dump_user_record(base, u)
     cont = _get_container()
@@ -369,8 +370,10 @@ async def save_users_async(users: dict[str, UserRecord], user_ids: list[str] | N
     base = USER_DATA_DIR
     base.mkdir(parents=True, exist_ok=True)
 
+    ids = set(user_ids) if user_ids is not None else None
+
     def _write_many():
-        targets = [u for u in users.values() if user_ids is None or u.user_id in user_ids]
+        targets = [u for u in users.values() if ids is None or u.user_id in ids]
         for u in targets:
             _dump_user_record(base, u)
 
