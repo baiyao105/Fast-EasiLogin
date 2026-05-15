@@ -3,16 +3,15 @@ import hashlib
 import secrets
 from typing import Any
 
-from fastapi import HTTPException
 from loguru import logger
 
 from fast_easilogin.shared.constants import LOGIN_URL
-from fast_easilogin.shared.errors import CircuitOpenError, RequestFailedError
+from fast_easilogin.shared.errors import CircuitOpenError, LoginFailedError, NetworkError, RequestFailedError
 from fast_easilogin.shared.http_client import request_with_retry
-from fast_easilogin.shared.store.config import find_user, load_appsettings_model, load_users, save_users_async
+from fast_easilogin.shared.store import find_user, load_appsettings_model, load_users, save_users_async
 
 
-async def user_login(userid: str, password_plain: str, _userid: str | None = None) -> dict[str, Any]:
+async def user_login(userid: str, password_plain: str, userid_for_disable: str | None = None) -> dict[str, Any]:
     md5_pwd = hashlib.md5(password_plain.encode("utf-8")).hexdigest()
     payload = {
         "username": userid,
@@ -31,23 +30,23 @@ async def user_login(userid: str, password_plain: str, _userid: str | None = Non
         token = data.get("data", {}).get("token")
     except (RequestFailedError, CircuitOpenError) as err:
         logger.error("login请求失败: userid={} err={}", userid, err)
-        raise HTTPException(status_code=504, detail={"message": "network_error", "statusCode": "504"}) from err
+        raise NetworkError from err
     except (asyncio.CancelledError, KeyboardInterrupt):
         raise
     except Exception as err:
         logger.error("获取token异常: userid={} err={}", userid, err)
-        raise HTTPException(status_code=504, detail={"message": "network_error", "statusCode": "504"}) from err
+        raise NetworkError from err
 
     if not token:
         code = data.get("statusCode") if isinstance(data, dict) else None
         msg = data.get("message") if isinstance(data, dict) else None
         logger.warning("登录失败: userid={} code={} message={}", userid, (code or "-"), str(msg or "-"))
         cfg = load_appsettings_model()
-        should_disable = (_userid is None) or cfg.Global.enable_password_error_disable
+        should_disable = (userid_for_disable is None) or cfg.Global.enable_password_error_disable
         if should_disable:
             try:
                 users = load_users()
-                target_user = find_user(_userid or userid, users)
+                target_user = find_user(userid_for_disable or userid, users)
                 if target_user and target_user.active:
                     target_user.active = False
                     users[target_user.user_id] = target_user
@@ -56,7 +55,7 @@ async def user_login(userid: str, password_plain: str, _userid: str | None = Non
             except OSError as e:
                 logger.error("自动禁用账户失败: {}", str(e))
 
-        raise HTTPException(status_code=401, detail={"message": "token_invalid", "statusCode": "401"})
+        raise LoginFailedError
 
     u = data.get("data", {}).get("user", {})
     return {

@@ -57,6 +57,7 @@ module = [
 [tool.pyright]
 exclude = [
   "**/__pycache__",
+  ".uv-cache",
   ".venv",
   "build",
   "dist"

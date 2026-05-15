@@ -40,5 +40,4 @@ class AppService(WindowsServiceBase):
         run_service(log_level="INFO", access_log=False)
 
 
-if __name__ == "__main__":
-    main()
+main()

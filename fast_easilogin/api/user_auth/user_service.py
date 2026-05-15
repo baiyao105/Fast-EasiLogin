@@ -17,7 +17,7 @@ from fast_easilogin.shared.constants import (
     USERINFO_TTL,
 )
 from fast_easilogin.shared.http_client import request_with_retry
-from fast_easilogin.shared.store.config import find_user, get_cache, load_users
+from fast_easilogin.shared.store import find_user, get_cache, load_users
 from fast_easilogin.shared.store.models import AggregatedUserInfo, UserIdentityInfo, UserInfoExtendVo
 
 from .auth_service import user_login
@@ -79,7 +79,7 @@ async def get_aggregated_user_info(userid: str, password_plain: str, fields: lis
     users = load_users()
     rec = find_user(userid, users)
     phone_for_login = rec.phone if rec else userid
-    login = await user_login(phone_for_login, password_plain, _userid=(rec.user_id if rec else None))
+    login = await user_login(phone_for_login, password_plain, userid_for_disable=(rec.user_id if rec else None))
     token = login.get("token")
     info = await fetch_user_info_with_token(token) if token else {}
     ext = info.get("userInfoExtendVo") or {}

@@ -1,10 +1,11 @@
 import asyncio
-import random
+import time
 
-_INFLIGHT_USERS: set[str] = set()
 _INFLIGHT_LOCK = asyncio.Lock()
+_INFLIGHT_USERS: dict[str, float] = {}
+_INFLIGHT_TTL = 120.0
 
 
-def ttl_with_jitter(base: float) -> int:
-    j = random.uniform(0.8, 1.2)
-    return max(5, int(base * j))
+def _stale_inflight() -> list[str]:
+    now = time.time()
+    return [uid for uid, ts in _INFLIGHT_USERS.items() if now - ts > _INFLIGHT_TTL]

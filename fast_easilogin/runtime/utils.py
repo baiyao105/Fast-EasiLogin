@@ -9,13 +9,13 @@ import sys
 from collections.abc import Callable
 from datetime import UTC, datetime
 from types import FrameType
-from typing import Any
 
+import uvicorn
 from loguru import logger
 
 from fast_easilogin.shared.basic_dir import LOGS_DIR, ensure_data_dirs
 
-_server: Any = None
+_server: uvicorn.Server | None = None
 
 
 def stop_server() -> None:
@@ -26,14 +26,14 @@ def stop_server() -> None:
     logger.info("服务已停止")
 
 
-def set_server(srv: Any) -> None:
+def set_server(srv: uvicorn.Server | None) -> None:
     global _server  # noqa: PLW0603
     _server = srv
 
 
 class RuntimeState:
     def __init__(self):
-        self.mutex: Any = None
+        self.mutex: int | None = None
 
 
 _STATE = RuntimeState()

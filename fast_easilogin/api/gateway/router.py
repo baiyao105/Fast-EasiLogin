@@ -1,10 +1,14 @@
+import asyncio
+import time
+from typing import Any
+
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Response
 from loguru import logger
 
 from fast_easilogin.api.user_auth.auth_service import user_login
 from fast_easilogin.api.user_auth.user_service import fetch_user_info_with_token, get_aggregated_user_info
 from fast_easilogin.shared.constants import TOKEN_OFFLINE_SUFFIX
-from fast_easilogin.shared.store.config import find_user, load_users, save_users_async
+from fast_easilogin.shared.store import find_user, load_users, save_users_async
 from fast_easilogin.shared.store.models import AppSaveDataBody, SaveUserBody, UserInfoRequest, UserRecord
 
 from .state import _INFLIGHT_LOCK, _INFLIGHT_USERS
@@ -12,11 +16,18 @@ from .state import _INFLIGHT_LOCK, _INFLIGHT_USERS
 router = APIRouter()
 
 
+def ok_response(data: dict | list | None = None) -> dict[str, Any]:
+    r: dict[str, Any] = {"message": "success", "statusCode": "200"}
+    if data is not None:
+        r["data"] = data
+    return r
+
+
 async def _update_user_profile(uid: str, token: str, nickname: str | None = None, head_img: str | None = None) -> None:
     async with _INFLIGHT_LOCK:
         if uid in _INFLIGHT_USERS:
             return
-        _INFLIGHT_USERS.add(uid)
+        _INFLIGHT_USERS[uid] = time.time()
     try:
         users = load_users()
         rec = users.get(uid)
@@ -49,26 +60,27 @@ async def _update_user_profile(uid: str, token: str, nickname: str | None = None
         logger.success(
             "账户信息被更新: usrid({}) {}", uid, {"nickName": new_name, "realName": real_name, "head_img": new_img}
         )
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.exception("更新用户资料异常: uid={}", uid)
     finally:
         async with _INFLIGHT_LOCK:
-            _INFLIGHT_USERS.discard(uid)
+            _INFLIGHT_USERS.pop(uid, None)
 
 
-@logger.catch
 @router.get("/savedata")
 async def savedata():
-    return {"message": "success", "statusCode": "200"}
+    return ok_response()
 
 
-@logger.catch
 @router.post("/user/info")
 async def user_info(body: UserInfoRequest):
     logger.info("聚合用户信息: user_id={} fields_count={}", body.user_id, len(body.fields or []))
     data = await get_aggregated_user_info(body.user_id, body.password, body.fields)
-    return {"message": "success", "statusCode": "200", "data": data}
+    return ok_response(data)
 
 
-@logger.catch
 @router.get("/getData/SSOLOGIN")
 async def get_sso_list(pt_type: str | None = None):
     users = load_users()
@@ -83,10 +95,9 @@ async def get_sso_list(pt_type: str | None = None):
         for u in users.values()
         if u.active
     ]
-    return {"message": "success", "statusCode": "200", "data": data}
+    return ok_response(data)
 
 
-@logger.catch
 @router.get("/getData/SSOLOGIN/{userid}")
 async def sso_login_user(
     userid: str,
@@ -100,7 +111,7 @@ async def sso_login_user(
     if record is None or not record.active:
         raise HTTPException(status_code=404, detail={"message": "user_not_found", "statusCode": "404"})
     login_account = record.phone or userid
-    token_info = await user_login(login_account, record.password, _userid=record.user_id)
+    token_info = await user_login(login_account, record.password, userid_for_disable=record.user_id)
     token = str(token_info.get("token") or "")
     response.set_cookie(
         key="pt_token",
@@ -123,22 +134,19 @@ async def sso_login_user(
         nickname=str(token_info.get("nickName") or ""),
         head_img=str(token_info.get("head_img") or ""),
     )
-    return {"message": "success", "statusCode": "200"}
+    return ok_response()
 
 
-@logger.catch
 @router.get("/getData/SSOLOGOUT")
 async def sso_logout(pt_type: str | None = None):
-    return {"message": "success", "statusCode": "200"}
+    return ok_response()
 
 
-@logger.catch
 @router.delete("/deleteData")
 async def delete_data():
-    return {"message": "success", "statusCode": "200"}
+    return ok_response()
 
 
-@logger.catch
 @router.post("/savedata")
 async def save_user(body: SaveUserBody | AppSaveDataBody, background_tasks: BackgroundTasks):
     users = load_users()
@@ -160,11 +168,11 @@ async def save_user(body: SaveUserBody | AppSaveDataBody, background_tasks: Back
         )
         await save_users_async(users, user_ids=[key_uid])
         logger.info("更新用户信息: phone={} user_id={}", body.userid, key_uid)
-        return {"message": "success", "statusCode": "200"}
+        return ok_response()
     uid = body.pt_userid
     rec = users.get(uid)
     if rec and rec.pt_timestamp is not None and rec.pt_timestamp > body.pt_timestamp:
-        return {"message": "success", "statusCode": "200"}
+        return ok_response()
     new_name = body.pt_nickname or (rec.user_nickname if rec else "")
     new_img = body.pt_photourl or (rec.head_img if rec else "")
     real_name = rec.user_realname if rec else ""
@@ -195,10 +203,9 @@ async def save_user(body: SaveUserBody | AppSaveDataBody, background_tasks: Back
             head_img=body.pt_photourl,
         )
 
-    return {"message": "success", "statusCode": "200"}
+    return ok_response()
 
 
-@logger.catch
 @router.post("/saveData")
 async def save_data(body: SaveUserBody | AppSaveDataBody, background_tasks: BackgroundTasks):
     return await save_user(body, background_tasks)
