@@ -85,16 +85,8 @@ class AppSettingsManager:
 _settings_manager: AppSettingsManager | None = None
 
 
-def write_config(cfg: dict) -> None:
-    AppSettingsManager().write(cfg)
-
-
 def load_appsettings_model() -> AppSettings:
     global _settings_manager  # noqa: PLW0603
     if _settings_manager is None:
         _settings_manager = AppSettingsManager()
     return _settings_manager.load()
-
-
-def load_appsettings() -> dict:
-    return load_appsettings_model().model_dump()

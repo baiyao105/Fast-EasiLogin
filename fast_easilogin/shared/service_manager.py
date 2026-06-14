@@ -1,5 +1,4 @@
 import contextlib
-from typing import cast
 
 import servicemanager
 import win32event
@@ -12,7 +11,7 @@ class WindowsServiceBase(win32serviceutil.ServiceFramework):
     _svc_display_name_ = "Seewo FastLogin Service"
     _svc_description_ = "Seewo FastLogin background service"
 
-    def __init__(self, args):
+    def __init__(self, args: list[str]):
         super().__init__(args)
         self.hWaitStop = win32event.CreateEvent(None, 0, 0, None)
 
@@ -49,43 +48,14 @@ class WindowsServiceManager:
         )
 
     @staticmethod
-    def remove(service_name: str) -> None:
-        with contextlib.suppress(Exception):
-            win32serviceutil.StopService(service_name)
-        win32serviceutil.RemoveService(service_name)
-
-    @staticmethod
-    def exists(service_name: str) -> bool:
-        try:
-            win32serviceutil.QueryServiceStatus(service_name)
-        except Exception:
-            return False
-        else:
-            return True
-
-    @staticmethod
     def start(service_name: str) -> None:
         win32serviceutil.StartService(service_name)
 
     @staticmethod
-    def stop(service_name: str) -> None:
-        win32serviceutil.StopService(service_name)
-
-    @staticmethod
-    def restart(service_name: str) -> None:
-        try:
-            win32serviceutil.RestartService(service_name)
-        except Exception:
+    def remove(service_name: str) -> None:
+        with contextlib.suppress(Exception):
             win32serviceutil.StopService(service_name)
-            win32serviceutil.StartService(service_name)
-
-    @staticmethod
-    def status(service_name: str) -> int | None:
-        try:
-            st = win32serviceutil.QueryServiceStatus(service_name)
-            return cast(int, st[1])
-        except Exception:
-            return None
+        win32serviceutil.RemoveService(service_name)
 
     @staticmethod
     def set_autostart(service_name: str, auto_start: bool = True) -> None:

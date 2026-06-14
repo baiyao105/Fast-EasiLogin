@@ -31,4 +31,4 @@ def run_service(log_level: str = "INFO", access_log: bool = False) -> None:
 def run_api(log_level: str = "INFO", access_log: bool = False) -> None:
     _init_environment(log_level)
     port = load_appsettings_model().Global.port
-    uvicorn.run(app, host="127.0.0.1", port=port, server_header=False, access_log=access_log, log_config=None)
+    uvicorn.run(app, host="127.0.0.1", port=port, server_header=False, access_log=access_log)

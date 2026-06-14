@@ -1,14 +1,12 @@
 import asyncio
 import os
-import threading
-import time
 from typing import Any
-from urllib.parse import urlparse
 
 import httpx
+from loguru import logger
 
-from .constants import FAIL_THRESHOLD, HTTP_SERVER_ERROR, RESET_TIMEOUT
-from .errors import CircuitOpenError, RequestFailedError
+from .constants import HTTP_SERVER_ERROR
+from .errors import RequestFailedError
 
 
 def _compute_limits() -> httpx.Limits:
@@ -27,14 +25,10 @@ class HttpClientManager:
     def __init__(self) -> None:
         self._client: httpx.AsyncClient | None = None
         self._rc = 0
-        self._opened_at: float | None = None
-        self._breaker: dict[str, dict[str, Any]] = {}
-        self._br_lock = threading.Lock()
 
     async def init(self) -> None:
         if self._client is None:
             self._client = httpx.AsyncClient(timeout=CLIENT_TIMEOUT, limits=CLIENT_LIMITS, http2=CLIENT_HTTP2)
-            self._opened_at = time.time()
         self._rc += 1
 
     async def close(self) -> None:
@@ -42,45 +36,6 @@ class HttpClientManager:
         if self._rc == 0 and self._client is not None:
             await self._client.aclose()
             self._client = None
-
-    def _host_from_url(self, url: str) -> str:
-        return urlparse(url).hostname or ""
-
-    def _breaker_state(self, host: str) -> dict[str, Any]:
-        with self._br_lock:
-            st = self._breaker.get(host)
-            if st is None:
-                st = {"fail": 0, "opened_at": 0.0, "open": False, "half": False}
-                self._breaker[host] = st
-            return st
-
-    def _should_block(self, host: str) -> bool:
-        st = self._breaker_state(host)
-        if st["open"]:
-            elapsed = time.time() - float(st["opened_at"] or 0.0)
-            if elapsed < RESET_TIMEOUT:
-                return True
-            with self._br_lock:
-                st["open"] = False
-                st["half"] = True
-                self._breaker[host] = st
-        return False
-
-    def _record_success(self, host: str) -> None:
-        with self._br_lock:
-            self._breaker[host] = {"fail": 0, "opened_at": 0.0, "open": False, "half": False}
-
-    def _record_failure(self, host: str) -> None:
-        with self._br_lock:
-            st = self._breaker.get(host)
-            if st is None:
-                st = {"fail": 0, "opened_at": 0.0, "open": False, "half": False}
-                self._breaker[host] = st
-            st["fail"] = st["fail"] + 1
-            if st["fail"] >= FAIL_THRESHOLD:
-                st["open"] = True
-                st["opened_at"] = time.time()
-                st["half"] = False
 
     async def request_with_retry(
         self,
@@ -90,41 +45,38 @@ class HttpClientManager:
         headers: dict[str, str] | None = None,
         cookies: dict[str, str] | None = None,
         json: dict[str, Any] | None = None,
-        max_attempts: int = 3,
+        max_attempts: int = 2,
         backoff_base: float = 0.2,
     ) -> httpx.Response:
-        host = self._host_from_url(url)
         client = self._client
         if client is None:
-            raise RuntimeError("HttpClientManager 未初始化, 请先调用 init()")  # noqa: TRY003
+            raise RuntimeError("HttpClientManager 未初始化, 请先调用 init()")
         last_err: Exception | None = None
         for attempt in range(max_attempts):
-            if self._should_block(host):
-                raise CircuitOpenError(f"熔断host={host}")
             try:
                 if method == "GET":
                     r = await client.get(url, headers=headers, cookies=cookies)
                 else:
                     r = await client.post(url, headers=headers, cookies=cookies, json=json)
                 if r.status_code >= HTTP_SERVER_ERROR:
-                    self._record_failure(host)
-                    last_err = RequestFailedError(f"服务端错误: url={url} status={r.status_code}")
+                    msg = f"服务端错误: url={url} status={r.status_code}"
+                    logger.error("[第{}次] {}", attempt + 1, msg)
+                    last_err = RequestFailedError(msg)
                     await asyncio.sleep(backoff_base * (2**attempt))
                     continue
             except httpx.TimeoutException as e:
-                self._record_failure(host)
+                logger.error("[第{}次] 超时: url={} err={}", attempt + 1, url, e)
                 last_err = e
                 await asyncio.sleep(backoff_base * (2**attempt))
                 continue
             except httpx.HTTPError as e:
-                self._record_failure(host)
+                logger.error("[第{}次] HTTP错误: url={} err={}", attempt + 1, url, e)
                 last_err = e
                 await asyncio.sleep(backoff_base * (2**attempt))
                 continue
             else:
-                self._record_success(host)
                 return r
-        raise RequestFailedError(f"请求失败, 已达最大重试次数{max_attempts}: url={url}") from last_err  # noqa: TRY003
+        raise RequestFailedError(f"请求失败, 已达最大重试次数{max_attempts}: url={url}") from last_err
 
 
 _HTTP_MANAGER = HttpClientManager()
@@ -145,7 +97,7 @@ async def request_with_retry(
     headers: dict[str, str] | None = None,
     cookies: dict[str, str] | None = None,
     json: dict[str, Any] | None = None,
-    max_attempts: int = 3,
+    max_attempts: int = 2,
     backoff_base: float = 0.2,
 ):
     return await _HTTP_MANAGER.request_with_retry(

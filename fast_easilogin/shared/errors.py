@@ -1,17 +1,12 @@
 class LoginFailedError(Exception):
-    def __init__(self, message: str = "login_failed", status_code: int = 401):
+    def __init__(self, message: str = "登录失败", status_code: int = 401):
         self.status_code = status_code
         super().__init__(message)
 
 
 class NetworkError(Exception):
-    def __init__(self, message: str = "network_error", status_code: int = 504):
+    def __init__(self, message: str = "网络错误", status_code: int = 504):
         self.status_code = status_code
-        super().__init__(message)
-
-
-class CircuitOpenError(Exception):
-    def __init__(self, message: str = "熔断器已打开, 请求被拦截"):
         super().__init__(message)
 
 

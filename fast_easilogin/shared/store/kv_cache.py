@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import json
 import threading
 import time
 from collections import OrderedDict
-from typing import cast
 
 from fast_easilogin.shared.store.config_manager import load_appsettings_model
 
@@ -61,23 +59,6 @@ def get_cache() -> InMemoryKVCache:
     capacity = int(load_appsettings_model().Global.cache_max_entries)
     _mem_cache = InMemoryKVCache(capacity)
     return _mem_cache
-
-
-async def cache_json_get(key: str) -> dict:
-    r = get_cache()
-    raw = await r.get(key)
-    if not raw:
-        return {}
-    try:
-        return cast(dict, json.loads(raw))
-    except Exception:
-        return {}
-
-
-async def cache_json_set(key: str, value: dict, ex: int | None = None) -> None:
-    r = get_cache()
-    data = json.dumps(value, ensure_ascii=False)
-    await r.set(key, data, ex=ex)
 
 
 async def clear_cache() -> None:

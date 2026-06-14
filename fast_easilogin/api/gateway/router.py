@@ -1,6 +1,6 @@
 import asyncio
 import time
-from typing import Any
+from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Response
 from loguru import logger
@@ -8,16 +8,23 @@ from loguru import logger
 from fast_easilogin.api.user_auth.auth_service import user_login
 from fast_easilogin.api.user_auth.user_service import fetch_user_info_with_token, get_aggregated_user_info
 from fast_easilogin.shared.constants import TOKEN_OFFLINE_SUFFIX
-from fast_easilogin.shared.store import find_user, load_users, save_users_async
-from fast_easilogin.shared.store.models import AppSaveDataBody, SaveUserBody, UserInfoRequest, UserRecord
+from fast_easilogin.shared.store import find_user, load_users_async, save_users_async
+from fast_easilogin.shared.store.models import (
+    AppSaveDataBody,
+    DataResponse,
+    OkResponse,
+    SaveUserBody,
+    UserInfoRequest,
+    UserRecord,
+)
 
-from .state import _INFLIGHT_LOCK, _INFLIGHT_USERS
+from .state import _INFLIGHT_LOCK, _INFLIGHT_USERS, _stale_inflight
 
 router = APIRouter()
 
 
-def ok_response(data: dict | list | None = None) -> dict[str, Any]:
-    r: dict[str, Any] = {"message": "success", "statusCode": "200"}
+def ok_response(data: dict | list | None = None) -> dict:
+    r: dict = {"message": "success", "statusCode": "200"}
     if data is not None:
         r["data"] = data
     return r
@@ -28,8 +35,11 @@ async def _update_user_profile(uid: str, token: str, nickname: str | None = None
         if uid in _INFLIGHT_USERS:
             return
         _INFLIGHT_USERS[uid] = time.time()
+        stale = _stale_inflight()
+        for s in stale:
+            _INFLIGHT_USERS.pop(s, None)
     try:
-        users = load_users()
+        users = await load_users_async()
         rec = users.get(uid)
         if not rec:
             return
@@ -69,21 +79,24 @@ async def _update_user_profile(uid: str, token: str, nickname: str | None = None
             _INFLIGHT_USERS.pop(uid, None)
 
 
-@router.get("/savedata")
+SaveBody = Annotated[SaveUserBody | AppSaveDataBody, "body"]
+
+
+@router.get("/savedata", response_model=OkResponse)
 async def savedata():
     return ok_response()
 
 
-@router.post("/user/info")
+@router.post("/user/info", response_model=DataResponse)
 async def user_info(body: UserInfoRequest):
     logger.info("聚合用户信息: user_id={} fields_count={}", body.user_id, len(body.fields or []))
     data = await get_aggregated_user_info(body.user_id, body.password, body.fields)
     return ok_response(data)
 
 
-@router.get("/getData/SSOLOGIN")
+@router.get("/getData/SSOLOGIN", response_model=DataResponse)
 async def get_sso_list(pt_type: str | None = None):
-    users = load_users()
+    users = await load_users_async()
     data: list[dict[str, str]] = [
         {
             "pt_nickname": u.user_nickname,
@@ -98,7 +111,7 @@ async def get_sso_list(pt_type: str | None = None):
     return ok_response(data)
 
 
-@router.get("/getData/SSOLOGIN/{userid}")
+@router.get("/getData/SSOLOGIN/{userid}", response_model=OkResponse)
 async def sso_login_user(
     userid: str,
     response: Response,
@@ -106,13 +119,13 @@ async def sso_login_user(
     pt_type: str | None = None,
     pt_appid: str | None = None,
 ):
-    users = load_users()
+    users = await load_users_async()
     record = find_user(userid, users)
     if record is None or not record.active:
         raise HTTPException(status_code=404, detail={"message": "user_not_found", "statusCode": "404"})
     login_account = record.phone or userid
     token_info = await user_login(login_account, record.password, userid_for_disable=record.user_id)
-    token = str(token_info.get("token") or "")
+    token = str(token_info.token)
     response.set_cookie(
         key="pt_token",
         value=token,
@@ -123,33 +136,33 @@ async def sso_login_user(
     logger.info(
         "账户被登录: usrid({}) : 账户信息({}, {}, {})",
         userid,
-        str(token_info.get("nickName") or ""),
-        str(token_info.get("realName") or ""),
-        str(token_info.get("joinUnitTime")),
+        str(token_info.nickName or ""),
+        str(token_info.realName or ""),
+        str(token_info.joinUnitTime),
     )
     background_tasks.add_task(
         _update_user_profile,
         record.user_id,
         token,
-        nickname=str(token_info.get("nickName") or ""),
-        head_img=str(token_info.get("head_img") or ""),
+        nickname=str(token_info.nickName or ""),
+        head_img=str(token_info.head_img or ""),
     )
     return ok_response()
 
 
-@router.get("/getData/SSOLOGOUT")
+@router.get("/getData/SSOLOGOUT", response_model=OkResponse)
 async def sso_logout(pt_type: str | None = None):
     return ok_response()
 
 
-@router.delete("/deleteData")
+@router.delete("/deleteData", response_model=OkResponse)
 async def delete_data():
     return ok_response()
 
 
-@router.post("/savedata")
-async def save_user(body: SaveUserBody | AppSaveDataBody, background_tasks: BackgroundTasks):
-    users = load_users()
+@router.post("/savedata", response_model=OkResponse)
+async def save_user(body: SaveBody, background_tasks: BackgroundTasks):
+    users = await load_users_async()
     if isinstance(body, SaveUserBody):
         key_uid = body.userid
         prev = users.get(body.userid) or next((r for r in users.values() if r.phone == body.userid), None)
@@ -206,6 +219,6 @@ async def save_user(body: SaveUserBody | AppSaveDataBody, background_tasks: Back
     return ok_response()
 
 
-@router.post("/saveData")
-async def save_data(body: SaveUserBody | AppSaveDataBody, background_tasks: BackgroundTasks):
+@router.post("/saveData", response_model=OkResponse)
+async def save_data(body: SaveBody, background_tasks: BackgroundTasks):
     return await save_user(body, background_tasks)

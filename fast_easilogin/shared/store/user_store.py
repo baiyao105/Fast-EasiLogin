@@ -58,7 +58,7 @@ def _user_record_from_info(uid: str, info: dict) -> UserRecord:
     )
 
 
-def load_users() -> dict[str, UserRecord]:
+def _load_users_sync() -> dict[str, UserRecord]:
     global _users_cache, _users_cache_mtime, _phone_index  # noqa: PLW0603
     ensure_data_dir()
     base = USER_DATA_DIR
@@ -85,6 +85,14 @@ def load_users() -> dict[str, UserRecord]:
     _phone_index = phone_index
     _users_cache_mtime = mtime
     return users
+
+
+def load_users() -> dict[str, UserRecord]:
+    return _load_users_sync()
+
+
+async def load_users_async() -> dict[str, UserRecord]:
+    return await asyncio.to_thread(_load_users_sync)
 
 
 def find_user(identifier: str, users: dict[str, UserRecord] | None = None) -> UserRecord | None:
@@ -157,17 +165,5 @@ def _write_users(users: dict[str, UserRecord], user_ids: list[str] | None = None
     return True
 
 
-def save_users(users: dict[str, UserRecord], user_ids: list[str] | None = None) -> None:
-    _write_users(users, user_ids)
-
-
 async def save_users_async(users: dict[str, UserRecord], user_ids: list[str] | None = None) -> bool:
     return await asyncio.to_thread(_write_users, users, user_ids)
-
-
-def get_users_mtime() -> float | None:
-    ensure_data_dir()
-    base = USER_DATA_DIR
-    base.mkdir(parents=True, exist_ok=True)
-    latest = _latest_profiles_mtime(base)
-    return latest if latest > 0 else None

@@ -31,14 +31,6 @@ def set_server(srv: uvicorn.Server | None) -> None:
     _server = srv
 
 
-class RuntimeState:
-    def __init__(self):
-        self.mutex: int | None = None
-
-
-_STATE = RuntimeState()
-
-
 class InterceptHandler(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
         level: str | int
@@ -166,22 +158,3 @@ def _get_event_loop():
         return asyncio.get_event_loop()
     except Exception:
         return None
-
-
-def ensure_single_instance(name: str = r"Local\SeewoFastLoginSingleInstance") -> bool:
-    if platform.system() != "Windows":
-        return True
-    try:
-        win32event = importlib.import_module("win32event")
-        win32api = importlib.import_module("win32api")
-        winerror = importlib.import_module("winerror")
-    except ImportError:
-        return True
-    h = win32event.CreateMutex(None, False, name)
-    last_err = 0
-    with contextlib.suppress(Exception):
-        last_err = win32api.GetLastError()
-    if last_err == getattr(winerror, "ERROR_ALREADY_EXISTS", 183):
-        return False
-    _STATE.mutex = h
-    return True

@@ -18,7 +18,7 @@ from fast_easilogin.shared.constants import (
 )
 from fast_easilogin.shared.http_client import request_with_retry
 from fast_easilogin.shared.store import find_user, get_cache, load_users
-from fast_easilogin.shared.store.models import AggregatedUserInfo, UserIdentityInfo, UserInfoExtendVo
+from fast_easilogin.shared.store.models import AggregatedUserInfo, LoginResult, UserIdentityInfo, UserInfoExtendVo
 
 from .auth_service import user_login
 
@@ -79,29 +79,31 @@ async def get_aggregated_user_info(userid: str, password_plain: str, fields: lis
     users = load_users()
     rec = find_user(userid, users)
     phone_for_login = rec.phone if rec else userid
-    login = await user_login(phone_for_login, password_plain, userid_for_disable=(rec.user_id if rec else None))
-    token = login.get("token")
+    login: LoginResult = await user_login(
+        phone_for_login, password_plain, userid_for_disable=(rec.user_id if rec else None)
+    )
+    token = login.token
     info = await fetch_user_info_with_token(token) if token else {}
     ext = info.get("userInfoExtendVo") or {}
     identity = ext.get("userIdentityInfo") or {}
     agg = AggregatedUserInfo(
         token=token,
-        head_img=(info.get("photoUrl") or login.get("head_img")),
+        head_img=(info.get("photoUrl") or login.head_img),
         photoUrl=info.get("photoUrl"),
-        phone=(info.get("phone") or login.get("phone") or userid),
-        joinUnitTime=info.get("joinUnitTime") or login.get("joinUnitTime"),
-        cityId=info.get("cityId") or login.get("cityId"),
-        accountId=info.get("accountId") or login.get("accountId"),
+        phone=(info.get("phone") or login.phone or userid),
+        joinUnitTime=info.get("joinUnitTime") or login.joinUnitTime,
+        cityId=info.get("cityId") or login.cityId,
+        accountId=info.get("accountId") or login.accountId,
         accountType=info.get("accountType"),
         address=info.get("address"),
-        nickName=info.get("nickName") or login.get("nickName"),
-        user_name=info.get("nickName") or login.get("user_name"),
-        realName=info.get("realName") or login.get("realName"),
-        username=info.get("username") or login.get("username") or userid,
-        user_id=info.get("username") or login.get("user_id") or userid,
-        wechatUid=info.get("wechatUid") or login.get("wechatUid"),
-        uid=info.get("uid") or login.get("uid"),
-        appCode=info.get("appCode") or login.get("appCode"),
+        nickName=info.get("nickName") or login.nickName,
+        user_name=info.get("nickName") or login.user_name,
+        realName=info.get("realName") or login.realName,
+        username=info.get("username") or login.username or userid,
+        user_id=info.get("username") or login.user_id or userid,
+        wechatUid=info.get("wechatUid") or login.wechatUid,
+        uid=info.get("uid") or login.uid,
+        appCode=info.get("appCode") or login.appCode,
         provinceId=info.get("provinceId"),
         riskLevel=info.get("riskLevel"),
         stageId=info.get("stageId"),
