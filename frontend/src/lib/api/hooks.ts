@@ -25,7 +25,7 @@ export function useAccounts() {
 
 export function useAddAccount() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: (data: { userid: string; password: string; user_name?: string; head_img?: string }) =>
       post('/accounts', data),
@@ -37,7 +37,7 @@ export function useAddAccount() {
 
 export function useDeleteAccount() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: (userid: string) => del(`/accounts/${userid}`),
     onSuccess: () => {
@@ -55,7 +55,7 @@ export function useSettings() {
 
 export function useUpdateSettings() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: (data: Partial<Settings>) => post('/settings', data),
     onSuccess: () => {
@@ -66,7 +66,7 @@ export function useUpdateSettings() {
 
 export function useClearCache() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: () => post('/settings/clear-cache'),
     onSuccess: () => {
