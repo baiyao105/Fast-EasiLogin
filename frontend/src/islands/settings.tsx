@@ -16,17 +16,17 @@ function SettingsInner() {
   const { data, isLoading } = useSettings();
   const updateSettings = useUpdateSettings();
   const clearCache = useClearCache();
-  
+
   const [port, setPort] = useState('');
   const [webuiPort, setWebuiPort] = useState('');
-  
+
   useEffect(() => {
     if (data?.data) {
       setPort(String(data.data.Global.port));
       setWebuiPort(String(data.data.Global.webui_port));
     }
   }, [data]);
-  
+
   const handleSave = async () => {
     await updateSettings.mutateAsync({
       Global: {
@@ -35,14 +35,14 @@ function SettingsInner() {
       }
     });
   };
-  
+
   const handleClearCache = async () => {
     if (confirm('确定要清除缓存吗？')) {
       await clearCache.mutateAsync();
       alert('缓存已清除');
     }
   };
-  
+
   if (isLoading) {
     return (
       <>
@@ -65,13 +65,13 @@ function SettingsInner() {
       </>
     );
   }
-  
+
   return (
     <>
       <div className="page-header">
         <h1 className="page-title">设置</h1>
       </div>
-      
+
       <div className="page-container">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div className="card">
@@ -90,7 +90,7 @@ function SettingsInner() {
                     placeholder="24300"
                   />
                 </div>
-                
+
                 <div>
                   <label className="label">WebUI 端口</label>
                   <input
@@ -101,7 +101,7 @@ function SettingsInner() {
                     placeholder="3000"
                   />
                 </div>
-                
+
                 <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: 8 }}>
                   <button className="btn btn-primary" onClick={handleSave}>
                     保存设置
@@ -110,7 +110,7 @@ function SettingsInner() {
               </div>
             </div>
           </div>
-          
+
           <div className="card">
             <div className="card-header">
               <h2 className="card-title">缓存管理</h2>

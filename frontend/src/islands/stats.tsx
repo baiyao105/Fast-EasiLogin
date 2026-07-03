@@ -14,7 +14,7 @@ export function StatsIsland() {
 
 function StatsCardInner() {
   const { data, isLoading } = useDashboardStats();
-  
+
   if (isLoading) {
     return (
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -27,6 +27,6 @@ function StatsCardInner() {
       </div>
     );
   }
-  
+
   return <StatsCard stats={data?.data} />;
 }
