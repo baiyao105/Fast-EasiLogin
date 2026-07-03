@@ -14,7 +14,7 @@ dev = [
 [project]
 dependencies = [
   "PyYAML ~= 6.0.2",
-  "fastapi ~=0.136.0",
+  "fastapi ~=0.139.0",
   "httpx[http2] ~= 0.28.1",
   "loguru ~= 0.7.2",
   "pydantic ~=2.13.0",
