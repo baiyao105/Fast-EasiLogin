@@ -2,14 +2,21 @@ import asyncio
 import time
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Response
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response
 from loguru import logger
 
-from fast_easilogin.api.user_auth.auth_service import user_login
-from fast_easilogin.api.user_auth.user_service import fetch_user_info_with_token, get_aggregated_user_info
-from fast_easilogin.shared.constants import TOKEN_OFFLINE_SUFFIX
-from fast_easilogin.shared.store import find_user, load_users_async, save_users_async
-from fast_easilogin.shared.store.models import (
+from fast_easilogin.auth.service import (
+    authenticate_user as user_login,
+)
+from fast_easilogin.auth.service import (
+    fetch_user_info_with_token,
+)
+from fast_easilogin.auth.service import (
+    get_user_info as get_aggregated_user_info,
+)
+from fast_easilogin.core.constants import TOKEN_OFFLINE_SUFFIX
+from fast_easilogin.storage import find_user, load_users_async, save_users_async
+from fast_easilogin.storage.models import (
     AppSaveDataBody,
     DataResponse,
     OkResponse,
@@ -18,7 +25,7 @@ from fast_easilogin.shared.store.models import (
     UserRecord,
 )
 
-from .state import _INFLIGHT_LOCK, _INFLIGHT_USERS, _stale_inflight
+from .state import _INFLIGHT_LOCK, _INFLIGHT_USERS, _stale_inflight, record_login
 
 router = APIRouter()
 
@@ -89,6 +96,7 @@ async def savedata():
 
 @router.post("/user/info", response_model=DataResponse)
 async def user_info(body: UserInfoRequest):
+    """聚合用户信息"""
     logger.info("聚合用户信息: user_id={} fields_count={}", body.user_id, len(body.fields or []))
     data = await get_aggregated_user_info(body.user_id, body.password, body.fields)
     return ok_response(data)
@@ -96,6 +104,7 @@ async def user_info(body: UserInfoRequest):
 
 @router.get("/getData/SSOLOGIN", response_model=DataResponse)
 async def get_sso_list(pt_type: str | None = None):
+    """SSO接口列表"""
     users = await load_users_async()
     data: list[dict[str, str]] = [
         {
@@ -115,16 +124,26 @@ async def get_sso_list(pt_type: str | None = None):
 async def sso_login_user(
     userid: str,
     response: Response,
+    request: Request,
     background_tasks: BackgroundTasks,
     pt_type: str | None = None,
     pt_appid: str | None = None,
 ):
+    """SSO 登录"""
     users = await load_users_async()
     record = find_user(userid, users)
     if record is None or not record.active:
         raise HTTPException(status_code=404, detail={"message": "user_not_found", "statusCode": "404"})
     login_account = record.phone or userid
-    token_info = await user_login(login_account, record.password, userid_for_disable=record.user_id)
+    try:
+        token_info = await user_login(login_account, record.password, userid_for_disable=record.user_id)
+    except Exception:
+        record_login(
+            username=record.user_nickname or userid,
+            ip=request.client.host if request and request.client else "unknown",
+            status="failed",
+        )
+        raise
     token = str(token_info.token)
     response.set_cookie(
         key="pt_token",
@@ -147,21 +166,29 @@ async def sso_login_user(
         nickname=str(token_info.nickName or ""),
         head_img=str(token_info.head_img or ""),
     )
+    record_login(
+        username=str(token_info.nickName or userid),
+        ip=request.client.host if request and request.client else "unknown",
+        status="success",
+    )
     return ok_response()
 
 
 @router.get("/getData/SSOLOGOUT", response_model=OkResponse)
 async def sso_logout(pt_type: str | None = None):
+    """SSO 登出"""
     return ok_response()
 
 
 @router.delete("/deleteData", response_model=OkResponse)
 async def delete_data():
+    """删除数据"""
     return ok_response()
 
 
 @router.post("/savedata", response_model=OkResponse)
 async def save_user(body: SaveBody, background_tasks: BackgroundTasks):
+    """保存用户数据"""
     users = await load_users_async()
     if isinstance(body, SaveUserBody):
         key_uid = body.userid
@@ -221,4 +248,5 @@ async def save_user(body: SaveBody, background_tasks: BackgroundTasks):
 
 @router.post("/saveData", response_model=OkResponse)
 async def save_data(body: SaveBody, background_tasks: BackgroundTasks):
+    """saveData 别名"""
     return await save_user(body, background_tasks)

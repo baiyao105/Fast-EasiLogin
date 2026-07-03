@@ -1,0 +1,18 @@
+HTTP_SERVER_ERROR = 500
+
+APP_NAME = "Fast EasiLogin"
+
+LOGIN_TTL = 120.0
+USERINFO_TTL = 300.0
+
+TOKEN_INVALID_CODE = 40105
+TOKEN_MASK_MIN_LEN = 10
+TOKEN_OFFLINE_SUFFIX = "-offline"
+
+SEEWO_EDU_BASE = "https://edu.seewo.com"
+LOGIN_URL = f"{SEEWO_EDU_BASE}/api/v1/auth/login"
+USER_INFO_URL = f"{SEEWO_EDU_BASE}/api/v2/user/info"
+AUTH_APP_ANDROID = "EasiNoteAndroid"
+AUTH_REFER_ANDROID = "EnAppAndroid"
+USER_AGENT_ANDROID = "okhttp/3.12.12"
+CRYPTO_VERSION = "1"

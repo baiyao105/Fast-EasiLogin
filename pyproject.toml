@@ -123,3 +123,11 @@ select = [
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 "tests/*" = ["B011"]
+
+[tool.ty.analysis]
+allowed-unresolved-imports = [
+  "servicemanager",
+  "win32event",
+  "win32service",
+  "win32serviceutil"
+]
