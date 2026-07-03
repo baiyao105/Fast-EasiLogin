@@ -19,32 +19,32 @@ function AccountsInner() {
   const [userid, setUserid] = useState('');
   const [password, setPassword] = useState('');
   const [userName, setUserName] = useState('');
-  
+
   const { data, isLoading } = useAccounts();
   const addAccount = useAddAccount();
   const deleteAccount = useDeleteAccount();
-  
+
   const handleAdd = async () => {
     if (!userid || !password) return;
-    
+
     await addAccount.mutateAsync({
       userid,
       password,
       user_name: userName
     });
-    
+
     setShowAddDialog(false);
     setUserid('');
     setPassword('');
     setUserName('');
   };
-  
+
   const handleDelete = async (userid: string) => {
     if (confirm('确定要删除这个账户吗？')) {
       await deleteAccount.mutateAsync(userid);
     }
   };
-  
+
   return (
     <>
       <div className="page-header">
@@ -54,7 +54,7 @@ function AccountsInner() {
           添加账户
         </button>
       </div>
-      
+
       <div className="page-container">
         <AccountList
           accounts={data?.data}
@@ -62,7 +62,7 @@ function AccountsInner() {
           isLoading={isLoading}
         />
       </div>
-      
+
       {showAddDialog && (
         <div className="dialog-overlay" onClick={() => setShowAddDialog(false)}>
           <div className="dialog" onClick={(e) => e.stopPropagation()}>
@@ -72,7 +72,7 @@ function AccountsInner() {
                 <X width={18} height={18} strokeWidth={2} />
               </button>
             </div>
-            
+
             <div className="dialog-body">
               <div>
                 <label className="label">用户ID</label>
@@ -84,7 +84,7 @@ function AccountsInner() {
                   placeholder="请输入用户ID"
                 />
               </div>
-              
+
               <div>
                 <label className="label">密码</label>
                 <input
@@ -95,7 +95,7 @@ function AccountsInner() {
                   placeholder="请输入密码"
                 />
               </div>
-              
+
               <div>
                 <label className="label">用户名（可选）</label>
                 <input
@@ -107,7 +107,7 @@ function AccountsInner() {
                 />
               </div>
             </div>
-            
+
             <div className="dialog-footer">
               <button className="btn btn-secondary" onClick={() => setShowAddDialog(false)}>
                 取消
