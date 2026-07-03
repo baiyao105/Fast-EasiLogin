@@ -15,12 +15,12 @@ dev = [
 dependencies = [
   "PyYAML ~= 6.0.2",
   "fastapi ~=0.136.0",
+  "granian[rloop] ~=2.0.0",
   "httpx[http2] ~= 0.28.1",
   "loguru ~= 0.7.2",
   "pydantic ~=2.13.0",
   "pywin32 >= 306; platform_system == 'Windows'",
-  "tomlkit ~=0.15.0",
-  "uvicorn ~=0.49.0"
+  "tomlkit ~=0.15.0"
 ]
 description = "seewo-fastlogin"
 name = "fast_easilogin"
@@ -123,3 +123,11 @@ select = [
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 "tests/*" = ["B011"]
+
+[tool.ty.analysis]
+allowed-unresolved-imports = [
+  "servicemanager",
+  "win32event",
+  "win32service",
+  "win32serviceutil"
+]

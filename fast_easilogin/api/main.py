@@ -1,19 +1,17 @@
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 from loguru import logger
 
 from fast_easilogin.api.gateway.router import router
-from fast_easilogin.runtime.utils import stop_server
-from fast_easilogin.shared.basic_dir import ensure_data_dirs
-from fast_easilogin.shared.errors import LoginFailedError, NetworkError
-from fast_easilogin.shared.http_client import close_http_client, init_http_client
-from fast_easilogin.shared.store import clear_cache, close_cache, load_appsettings_model
+from fast_easilogin.app.utils import stop_server
+from fast_easilogin.core.basic_dir import ensure_data_dirs
+from fast_easilogin.core.errors import LoginFailedError, NetworkError
+from fast_easilogin.core.http_client import close_http_client, init_http_client
+from fast_easilogin.storage import clear_cache, close_cache, load_appsettings_model
 
 
 @asynccontextmanager
@@ -24,7 +22,7 @@ async def lifespan(app: FastAPI):
         await clear_cache()
         settings = load_appsettings_model()
         srv_port = int(settings.Global.port)
-        logger.success("服务启动成功: url=http://{}:{}", "127.0.0.1", srv_port)
+        logger.success("服务启动成功: url=http://{}:{}", "0.0.0.0", srv_port)
     except Exception as e:
         logger.exception("服务启动失败: {}", e)
     yield
@@ -57,23 +55,19 @@ app.add_middleware(
 app.add_middleware(GZipMiddleware, minimum_size=500)
 app.include_router(router)
 
-_STATIC = Path(__file__).resolve().parent / "static"
-app.mount("/static", StaticFiles(directory=str(_STATIC)), name="webui_static")
-
-
-@app.get("/")
-async def webui_index():
-    return FileResponse(_STATIC / "index.html")
-
 
 if __name__ == "__main__":
-    import uvicorn
+    import asyncio
+
+    from granian.constants import Interfaces
+    from granian.server.embed import Server as GranianServer
 
     _s = load_appsettings_model()
-    uvicorn.run(
+    server = GranianServer(
         app,
-        host="127.0.0.1",
+        address="0.0.0.0",
         port=int(_s.Global.port),
-        server_header=False,
-        log_config=None,
+        interface=Interfaces.ASGI,
+        log_enabled=False,
     )
+    asyncio.run(server.serve())
