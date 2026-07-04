@@ -19,8 +19,8 @@ from fast_easilogin.app.bootstrap import bootstrap
 from fast_easilogin.app.mode import parse_mode
 from fast_easilogin.app.utils import install_global_handlers, set_server, setup_logging, setup_win_eventlog
 from fast_easilogin.core.service_manager import WindowsServiceManager
+from fast_easilogin.dashboard import run_dashboard_server
 from fast_easilogin.storage import load_appsettings_model
-from fast_easilogin.web import run_web_server
 
 _STATIC_DIR = Path(__file__).resolve().parent.parent / "assets" / "static"
 
@@ -37,7 +37,7 @@ def _init_environment(log_level: str):
 def _is_port_available(port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         try:
-            s.bind(("0.0.0.0", port))
+            s.bind(("127.0.0.1", port))
         except OSError:
             return False
         else:
@@ -48,7 +48,7 @@ def _create_api_server(port: int, access_log: bool) -> GranianServer:
     """创建服务"""
     return GranianServer(
         app,
-        address="0.0.0.0",
+        address="127.0.0.1",
         port=port,
         interface=Interfaces.ASGI,
         log_enabled=True,
@@ -86,13 +86,13 @@ def run_webui(log_level: str = "INFO", access_log: bool = False, no_browser: boo
         logger.error("WebUI 端口 {} 已被占用", web_port)
         return
 
-    web_thread = threading.Thread(target=run_web_server, args=(web_port, log_level.lower()), daemon=True)
+    web_thread = threading.Thread(target=run_dashboard_server, args=(web_port, log_level.lower()), daemon=True)
     web_thread.start()
 
     time.sleep(0.5)
 
     if not no_browser:
-        webbrowser.open(f"http://0.0.0.0:{web_port}")
+        webbrowser.open(f"http://127.0.0.1:{web_port}")
 
     server = _create_api_server(port, access_log)
     set_server(server)

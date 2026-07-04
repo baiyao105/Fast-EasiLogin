@@ -50,4 +50,9 @@ export async function del<T>(url: string, config?: AxiosRequestConfig): Promise<
   return response.data;
 }
 
+// Orval custom instance
+export const customInstance = <T>(config: any): Promise<T> => {
+  return http(config).then((res) => res.data);
+};
+
 export default http;

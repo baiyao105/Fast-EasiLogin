@@ -1,5 +1,4 @@
-import win32event
-import win32service
+import sys
 
 from fast_easilogin.app.runner import run, run_service
 from fast_easilogin.app.utils import stop_server
@@ -10,22 +9,28 @@ def main():
     run()
 
 
-class AppService(WindowsServiceBase):
-    """Windows 服务"""
+if sys.platform == "win32":
 
-    _svc_name_ = "SeewoFastLoginService"
-    _svc_display_name_ = "Seewo FastLogin Service"
-    _svc_description_ = "Seewo FastLogin background service"
+    class AppService(WindowsServiceBase):
+        """Windows 服务"""
 
-    def SvcStop(self):
-        """响应停止请求"""
-        self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
-        stop_server()
-        win32event.SetEvent(self.hWaitStop)
+        _svc_name_ = "SeewoFastLoginService"
+        _svc_display_name_ = "Seewo FastLogin Service"
+        _svc_description_ = "Seewo FastLogin background service"
 
-    def SvcDoRun(self):
-        """启动服务"""
-        run_service(log_level="INFO", access_log=False)
+        def SvcStop(self):
+            """响应停止请求"""
+            import win32event
+            import win32service
+
+            self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
+            stop_server()
+            win32event.SetEvent(self.hWaitStop)
+
+        def SvcDoRun(self):
+            """启动服务"""
+            run_service(log_level="INFO", access_log=False)
 
 
-main()
+if __name__ == "__main__":
+    main()

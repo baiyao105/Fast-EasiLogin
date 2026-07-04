@@ -1,15 +1,14 @@
 import { defineConfig } from 'astro/config';
 import react from '@astrojs/react';
-import tailwind from '@astrojs/tailwind';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
+  outDir: "../fast_easilogin/assets/static",
   integrations: [
-    react(),
-    tailwind()
+    react()
   ],
   server: {
     port: 3000

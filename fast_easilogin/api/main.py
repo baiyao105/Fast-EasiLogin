@@ -9,6 +9,7 @@ from loguru import logger
 from fast_easilogin.api.gateway.router import router
 from fast_easilogin.app.utils import stop_server
 from fast_easilogin.core.basic_dir import ensure_data_dirs
+from fast_easilogin.core.constants import ALLOWED_ORIGINS
 from fast_easilogin.core.errors import LoginFailedError, NetworkError
 from fast_easilogin.core.http_client import close_http_client, init_http_client
 from fast_easilogin.storage import clear_cache, close_cache, load_appsettings_model
@@ -16,15 +17,12 @@ from fast_easilogin.storage import clear_cache, close_cache, load_appsettings_mo
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    try:
-        ensure_data_dirs()
-        await init_http_client()
-        await clear_cache()
-        settings = load_appsettings_model()
-        srv_port = int(settings.Global.port)
-        logger.success("服务启动成功: url=http://{}:{}", "0.0.0.0", srv_port)
-    except Exception as e:
-        logger.exception("服务启动失败: {}", e)
+    ensure_data_dirs()
+    await init_http_client()
+    await clear_cache()
+    settings = load_appsettings_model()
+    srv_port = int(settings.Global.port)
+    logger.success("服务启动成功: url=http://{}:{}", "127.0.0.1", srv_port)
     yield
     stop_server()
     await close_http_client()
@@ -47,9 +45,9 @@ async def network_error_handler(request: Request, exc: NetworkError):
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 app.add_middleware(GZipMiddleware, minimum_size=500)
@@ -65,7 +63,7 @@ if __name__ == "__main__":
     _s = load_appsettings_model()
     server = GranianServer(
         app,
-        address="0.0.0.0",
+        address="127.0.0.1",
         port=int(_s.Global.port),
         interface=Interfaces.ASGI,
         log_enabled=False,

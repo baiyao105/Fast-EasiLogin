@@ -25,7 +25,6 @@ from fast_easilogin.storage import (
     find_user,
     get_cache,
     load_appsettings_model,
-    load_users,
     load_users_async,
     save_users_async,
 )
@@ -180,7 +179,7 @@ async def get_user_info(userid: str, password_plain: str, fields: list[str] | No
         except Exception:
             pass
 
-    users = load_users()
+    users = await load_users_async()
     rec = find_user(userid, users)
     phone_for_login = rec.phone if rec else userid
     login: LoginResult = await authenticate_user(

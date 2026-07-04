@@ -12,3 +12,4 @@ venv.bak/
 .mypy_cache
 
 data/
+temp/

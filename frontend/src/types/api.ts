@@ -4,6 +4,10 @@ export interface Account {
   pt_userid: string;
   pt_username: string;
   pt_photourl: string;
+  status: 'active' | 'inactive';
+  login_count: number;
+  last_login: string | null;
+  phone: string;
 }
 
 export interface DashboardStats {
