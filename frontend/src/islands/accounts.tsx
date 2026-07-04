@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { 
+import {
   Button, TextField, Label, Input, Modal, SearchField, AlertDialog, Fieldset, Description, FieldError
 } from '@heroui/react';
 import { AccountList } from '../components/business/account-list';
@@ -157,8 +157,8 @@ function AccountsInner() {
               </AlertDialog.Body>
               <AlertDialog.Footer>
                 <Button variant="secondary" onPress={() => setDeleteTarget(null)}>取消</Button>
-                <Button 
-                  variant="danger" 
+                <Button
+                  variant="danger"
                   onPress={() => {
                     if (deleteTarget) {
                       handleDelete(deleteTarget.pt_userid);

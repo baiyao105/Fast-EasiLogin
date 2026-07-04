@@ -85,7 +85,7 @@ export function RecentLoginsIsland() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium text-foreground">{login.username}</span>
-                  <Chip 
+                  <Chip
                     color={login.status === 'success' ? 'success' : 'danger'}
                     variant="soft"
                     size="sm"

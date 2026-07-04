@@ -10,8 +10,8 @@ export function StatsCard({ stats }: StatsCardProps) {
   if (!stats) return null;
 
   const cards = [
-    { 
-      label: '服务状态', 
+    {
+      label: '服务状态',
       value: '正常运行',
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-success">
@@ -25,8 +25,8 @@ export function StatsCard({ stats }: StatsCardProps) {
         { label: '测试接口', variant: 'primary' as const }
       ]
     },
-    { 
-      label: '账号统计', 
+    {
+      label: '账号统计',
       value: stats.total_logins,
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary">
@@ -41,8 +41,8 @@ export function StatsCard({ stats }: StatsCardProps) {
         { label: '今日登录', value: `${stats.success_logins} 次` }
       ]
     },
-    { 
-      label: '活跃会话', 
+    {
+      label: '活跃会话',
       value: 1,
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-secondary">
@@ -81,13 +81,13 @@ export function StatsCard({ stats }: StatsCardProps) {
                   <span className="text-xs text-muted-foreground">{card.suffix}</span>
                 )}
               </div>
-              
+
               {card.subtitle && (
                 <div className="text-xs text-muted-foreground font-mono">
                   {card.subtitle}
                 </div>
               )}
-              
+
               {card.footer && (
                 <div className="mt-auto pt-3 border-t border-divider flex gap-6">
                   {card.footer.map((item) => (
@@ -102,7 +102,7 @@ export function StatsCard({ stats }: StatsCardProps) {
             {card.actions && (
               <Card.Footer className="flex gap-2 pt-3">
                 {card.actions.map((action) => (
-                  <Button 
+                  <Button
                     key={action.label}
                     variant={action.variant}
                     size="sm"

@@ -29,7 +29,11 @@
 .sidebar-logo-icon {
   width: 36px;
   height: 36px;
-  background: linear-gradient(135deg, var(--heroui-primary) 0%, var(--heroui-secondary) 100%);
+  background: linear-gradient(
+    135deg,
+    var(--heroui-primary) 0%,
+    var(--heroui-secondary) 100%
+  );
   border-radius: 8px;
   display: flex;
   align-items: center;
@@ -96,7 +100,7 @@
 
 /* Fluent-style rounded pill indicator */
 .nav-item.active::before {
-  content: '';
+  content: "";
   position: absolute;
   left: 0;
   top: 50%;
@@ -167,8 +171,13 @@
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
 }
 
 .status-text {
