@@ -1,4 +1,4 @@
 allowBuilds:
-  '@heroui/shared-utils': true
+  "@heroui/shared-utils": true
   esbuild: true
   sharp: true
