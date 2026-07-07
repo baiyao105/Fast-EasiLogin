@@ -182,9 +182,22 @@ class LoginTrend(BaseModel):
     count: int
 
 
+class GlobalSettingsUpdate(BaseModel):
+    """全局配置更新"""
+
+    port: int | None = None
+    webui_port: int | None = None
+    enable_eventlog: bool | None = None
+    enable_password_error_disable: bool | None = None
+    auto_restart_on_crash: bool | None = None
+    restart_delay_seconds: int | None = None
+    cache_max_entries: int | None = None
+
+
 class SettingsUpdate(BaseModel):
     """设置更新请求"""
 
+    Global: GlobalSettingsUpdate | None = None
     cache_ttl: int | None = None
     enable_autostart: bool | None = None
     log_level: str | None = None

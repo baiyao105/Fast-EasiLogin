@@ -142,6 +142,7 @@ async def sso_login_user(
             username=record.user_nickname or userid,
             ip=request.client.host if request and request.client else "unknown",
             status="failed",
+            head_img="",
         )
         raise
     token = str(token_info.token)
@@ -170,6 +171,7 @@ async def sso_login_user(
         username=str(token_info.nickName or userid),
         ip=request.client.host if request and request.client else "unknown",
         status="success",
+        head_img=str(token_info.head_img or ""),
     )
     return ok_response()
 

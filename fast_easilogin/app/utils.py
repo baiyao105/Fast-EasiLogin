@@ -97,11 +97,11 @@ def _setup_granian_logging() -> None:
     """将 Granian 的标准日志重定向到 loguru"""
     granian_logger = logging.getLogger("_granian")
     granian_logger.addHandler(InterceptHandler())
-    granian_logger.setLevel(logging.DEBUG)
+    granian_logger.setLevel(logging.WARNING)  # 只记录 WARNING 及以上级别
 
     access_logger = logging.getLogger("granian.access")
     access_logger.addHandler(GranianAccessLogHandler())
-    access_logger.setLevel(logging.DEBUG)
+    access_logger.setLevel(logging.WARNING)  # 只记录 WARNING 及以上级别
 
 
 def setup_win_eventlog(enable: bool) -> Callable[[str], None] | None:

@@ -6,8 +6,8 @@ requires = ["hatchling"]
 dev = [
   "mypy >= 1.19.1",
   "prek >= 0.2.10",
-  "pyright >= 1.1.405",
   "ruff >= 0.14.8",
+  "ty >= 0.0.56",
   "types-PyYAML >= 6.0.12.20250915"
 ]
 
@@ -122,6 +122,7 @@ select = [
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
+"fast_easilogin/__main__.py" = ["PLC0415"]
 "tests/*" = ["B011"]
 
 [tool.ty.analysis]

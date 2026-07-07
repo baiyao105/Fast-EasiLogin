@@ -25,7 +25,7 @@ _stats = {
 _recent_logins: deque[dict] = deque(maxlen=200)
 
 
-def record_login(username: str, ip: str, status: str) -> None:
+def record_login(username: str, ip: str, status: str, head_img: str = "") -> None:
     """记录登录事件"""
     _recent_logins.appendleft(
         {
@@ -33,6 +33,7 @@ def record_login(username: str, ip: str, status: str) -> None:
             "login_time": datetime.now(UTC).isoformat(),
             "ip_address": ip,
             "status": status,
+            "head_img": head_img,
         }
     )
     _stats["total_logins"] += 1
