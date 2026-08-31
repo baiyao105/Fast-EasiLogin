@@ -2,9 +2,9 @@
 
 import time as _time
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
-from fast_easilogin.api.gateway.state import get_login_trends, get_recent_logins, get_stats
+from fast_easilogin.core.runtime_state import RuntimeState
 from fast_easilogin.dashboard.models import ApiResponse
 from fast_easilogin.storage import load_appsettings_model
 from fast_easilogin.storage.models import DashboardStats
@@ -13,9 +13,10 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
 @router.get("/stats", response_model=DashboardStats)
-async def get_dashboard_stats():
-    """获取仪表盘统计数据"""
-    stats = get_stats()
+async def get_dashboard_stats(request: Request):
+    """统计数据"""
+    state: RuntimeState = request.app.state.services.state
+    stats = state.get_stats()
     settings = load_appsettings_model()
     return DashboardStats(
         service_status="running",
@@ -28,14 +29,16 @@ async def get_dashboard_stats():
 
 
 @router.get("/recent-logins")
-async def get_recent_logins_api(limit: int = 20):
-    """获取最近登录记录"""
-    records = get_recent_logins(limit)
+async def get_recent_logins_api(request: Request, limit: int = 20):
+    """最近登录记录"""
+    state: RuntimeState = request.app.state.services.state
+    records = state.get_recent_logins(limit)
     return ApiResponse(data=records)
 
 
 @router.get("/login-trends")
-async def get_login_trends_api(hours: int = 24):
-    """获取登录趋势数据"""
-    trends = get_login_trends(hours)
+async def get_login_trends_api(request: Request, hours: int = 24):
+    """登录趋势"""
+    state: RuntimeState = request.app.state.services.state
+    trends = state.get_login_trends(hours)
     return ApiResponse(data=trends)

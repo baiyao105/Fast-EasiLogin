@@ -10,25 +10,9 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from types import FrameType
 
-from granian.server.embed import Server as GranianServer
 from loguru import logger
 
 from fast_easilogin.core.basic_dir import LOGS_DIR, ensure_data_dirs
-
-_server: GranianServer | None = None
-
-
-def stop_server() -> None:
-    """停止服务"""
-    srv = _server
-    if srv is not None:
-        srv.stop()
-    logger.info("服务已停止")
-
-
-def set_server(srv: GranianServer | None) -> None:
-    global _server  # noqa: PLW0603
-    _server = srv
 
 
 class InterceptHandler(logging.Handler):
@@ -97,11 +81,11 @@ def _setup_granian_logging() -> None:
     """将 Granian 的标准日志重定向到 loguru"""
     granian_logger = logging.getLogger("_granian")
     granian_logger.addHandler(InterceptHandler())
-    granian_logger.setLevel(logging.WARNING)  # 只记录 WARNING 及以上级别
+    granian_logger.setLevel(logging.WARNING)
 
     access_logger = logging.getLogger("granian.access")
     access_logger.addHandler(GranianAccessLogHandler())
-    access_logger.setLevel(logging.WARNING)  # 只记录 WARNING 及以上级别
+    access_logger.setLevel(logging.WARNING)
 
 
 def setup_win_eventlog(enable: bool) -> Callable[[str], None] | None:

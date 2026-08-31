@@ -1,5 +1,4 @@
 import asyncio
-import time
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response
@@ -15,6 +14,7 @@ from fast_easilogin.auth.service import (
     get_user_info as get_aggregated_user_info,
 )
 from fast_easilogin.core.constants import TOKEN_OFFLINE_SUFFIX
+from fast_easilogin.core.services import Services
 from fast_easilogin.storage import find_user, load_users_async, save_users_async
 from fast_easilogin.storage.models import (
     AppSaveDataBody,
@@ -25,9 +25,12 @@ from fast_easilogin.storage.models import (
     UserRecord,
 )
 
-from .state import _INFLIGHT_LOCK, _INFLIGHT_USERS, _stale_inflight, record_login
-
 router = APIRouter()
+
+
+def _get_services(request: Request) -> Services:
+    services: Services = request.app.state.services
+    return services
 
 
 def ok_response(data: dict | list | None = None) -> dict:
@@ -37,20 +40,17 @@ def ok_response(data: dict | list | None = None) -> dict:
     return r
 
 
-async def _update_user_profile(uid: str, token: str, nickname: str | None = None, head_img: str | None = None) -> None:
-    async with _INFLIGHT_LOCK:
-        if uid in _INFLIGHT_USERS:
-            return
-        _INFLIGHT_USERS[uid] = time.time()
-        stale = _stale_inflight()
-        for s in stale:
-            _INFLIGHT_USERS.pop(s, None)
+async def _update_user_profile(services: Services, uid: str, token: str, nickname: str | None = None, head_img: str | None = None) -> None:
+    state = services.state
+    acquired = await state.acquire_inflight(uid)
+    if not acquired:
+        return
     try:
         users = await load_users_async()
         rec = users.get(uid)
         if not rec:
             return
-        fetched = await fetch_user_info_with_token(token)
+        fetched = await fetch_user_info_with_token(services, token)
         if not fetched:
             return
         new_name = fetched.get("nickName") or nickname or rec.user_nickname
@@ -82,8 +82,7 @@ async def _update_user_profile(uid: str, token: str, nickname: str | None = None
     except Exception:
         logger.exception("更新用户资料异常: uid={}", uid)
     finally:
-        async with _INFLIGHT_LOCK:
-            _INFLIGHT_USERS.pop(uid, None)
+        await state.release_inflight(uid)
 
 
 SaveBody = Annotated[SaveUserBody | AppSaveDataBody, "body"]
@@ -95,10 +94,11 @@ async def savedata():
 
 
 @router.post("/user/info", response_model=DataResponse)
-async def user_info(body: UserInfoRequest):
+async def user_info(request: Request, body: UserInfoRequest):
     """聚合用户信息"""
+    services = _get_services(request)
     logger.info("聚合用户信息: user_id={} fields_count={}", body.user_id, len(body.fields or []))
-    data = await get_aggregated_user_info(body.user_id, body.password, body.fields)
+    data = await get_aggregated_user_info(services, body.user_id, body.password, body.fields)
     return ok_response(data)
 
 
@@ -130,15 +130,16 @@ async def sso_login_user(
     pt_appid: str | None = None,
 ):
     """SSO 登录"""
+    services = _get_services(request)
     users = await load_users_async()
     record = find_user(userid, users)
     if record is None or not record.active:
         raise HTTPException(status_code=404, detail={"message": "user_not_found", "statusCode": "404"})
     login_account = record.phone or userid
     try:
-        token_info = await user_login(login_account, record.password, userid_for_disable=record.user_id)
+        token_info = await user_login(services, login_account, record.password, userid_for_disable=record.user_id)
     except Exception:
-        record_login(
+        services.state.record_login(
             username=record.user_nickname or userid,
             ip=request.client.host if request and request.client else "unknown",
             status="failed",
@@ -162,12 +163,13 @@ async def sso_login_user(
     )
     background_tasks.add_task(
         _update_user_profile,
+        services,
         record.user_id,
         token,
         nickname=str(token_info.nickName or ""),
         head_img=str(token_info.head_img or ""),
     )
-    record_login(
+    services.state.record_login(
         username=str(token_info.nickName or userid),
         ip=request.client.host if request and request.client else "unknown",
         status="success",
@@ -189,8 +191,9 @@ async def delete_data():
 
 
 @router.post("/savedata", response_model=OkResponse)
-async def save_user(body: SaveBody, background_tasks: BackgroundTasks):
+async def save_user(request: Request, body: SaveBody, background_tasks: BackgroundTasks):
     """保存用户数据"""
+    services = _get_services(request)
     users = await load_users_async()
     if isinstance(body, SaveUserBody):
         key_uid = body.userid
@@ -220,7 +223,7 @@ async def save_user(body: SaveBody, background_tasks: BackgroundTasks):
     real_name = rec.user_realname if rec else ""
     candidate_token = str(body.pt_token or "")
     if candidate_token and (not candidate_token.endswith(TOKEN_OFFLINE_SUFFIX)):
-        fetched_once = await fetch_user_info_with_token(candidate_token)
+        fetched_once = await fetch_user_info_with_token(services, candidate_token)
         real_name = fetched_once.get("realName") or real_name
     key = uid
     active_val = rec.active if rec else False
@@ -239,6 +242,7 @@ async def save_user(body: SaveBody, background_tasks: BackgroundTasks):
     if body.pt_token and not body.pt_token.endswith(TOKEN_OFFLINE_SUFFIX):
         background_tasks.add_task(
             _update_user_profile,
+            services,
             uid,
             body.pt_token,
             nickname=body.pt_nickname,
@@ -249,6 +253,6 @@ async def save_user(body: SaveBody, background_tasks: BackgroundTasks):
 
 
 @router.post("/saveData", response_model=OkResponse)
-async def save_data(body: SaveBody, background_tasks: BackgroundTasks):
+async def save_data(request: Request, body: SaveBody, background_tasks: BackgroundTasks):
     """saveData 别名"""
-    return await save_user(body, background_tasks)
+    return await save_user(request, body, background_tasks)

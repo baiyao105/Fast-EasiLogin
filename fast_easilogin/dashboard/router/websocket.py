@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import json
 import time as _time
@@ -6,7 +8,7 @@ from typing import Any
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from loguru import logger
 
-from fast_easilogin.api.gateway.state import get_login_trends, get_recent_logins, get_stats
+from fast_easilogin.core.runtime_state import RuntimeState
 from fast_easilogin.storage import load_appsettings_model
 
 router = APIRouter(tags=["websocket"])
@@ -17,7 +19,7 @@ _lock = asyncio.Lock()
 _shutdown = False
 
 
-async def _broadcast_stats():
+async def _broadcast_stats(state: RuntimeState) -> None:
     """定期推统计数据"""
     while not _shutdown:
         async with _lock:
@@ -28,7 +30,7 @@ async def _broadcast_stats():
             continue
 
         try:
-            data = _build_stats_message()
+            data = _build_stats_message(state)
             message = json.dumps(data, ensure_ascii=False)
             disconnected: list[WebSocket] = []
             for client in clients_snapshot:
@@ -46,9 +48,8 @@ async def _broadcast_stats():
         await asyncio.sleep(1)
 
 
-def _build_stats_message() -> dict[str, Any]:
-    """统计数据"""
-    stats = get_stats()
+def _build_stats_message(state: RuntimeState) -> dict[str, Any]:
+    stats = state.get_stats()
     settings = load_appsettings_model()
     return {
         "type": "stats",
@@ -63,33 +64,31 @@ def _build_stats_message() -> dict[str, Any]:
     }
 
 
-def _build_recent_logins_message(limit: int = 20) -> dict[str, Any]:
-    """最近登录"""
-    records = get_recent_logins(limit)
+def _build_recent_logins_message(state: RuntimeState, limit: int = 20) -> dict[str, Any]:
     return {
         "type": "recent_logins",
-        "data": records,
+        "data": state.get_recent_logins(limit),
     }
 
 
-def _build_login_trends_message(hours: int = 24) -> dict[str, Any]:
-    """登录趋势"""
-    trends = get_login_trends(hours)
+def _build_login_trends_message(state: RuntimeState, hours: int = 24) -> dict[str, Any]:
     return {
         "type": "login_trends",
-        "data": trends,
+        "data": state.get_login_trends(hours),
     }
 
 
 @router.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    """WebSocket端点"""
-    global _push_task  # noqa: PLW0603
+async def websocket_endpoint(websocket: WebSocket) -> None:
+    """WebSocket 端点"""
+    global _push_task
 
     try:
         await websocket.accept()
     except Exception:
         return
+
+    state: RuntimeState = websocket.app.state.services.state
 
     async with _lock:
         _clients.add(websocket)
@@ -97,12 +96,12 @@ async def websocket_endpoint(websocket: WebSocket):
     logger.debug("WebSocket连接, 连接数: {}", len(_clients))
 
     if _push_task is None or _push_task.done():
-        _push_task = asyncio.create_task(_broadcast_stats())
+        _push_task = asyncio.create_task(_broadcast_stats(state))
 
     try:
         try:
-            await websocket.send_text(json.dumps(_build_stats_message(), ensure_ascii=False))
-            await websocket.send_text(json.dumps(_build_recent_logins_message(), ensure_ascii=False))
+            await websocket.send_text(json.dumps(_build_stats_message(state), ensure_ascii=False))
+            await websocket.send_text(json.dumps(_build_recent_logins_message(state), ensure_ascii=False))
         except Exception:
             return
 
@@ -118,10 +117,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 msg = json.loads(data)
                 if msg.get("type") == "get_recent_logins":
                     limit = msg.get("limit", 20)
-                    await websocket.send_text(json.dumps(_build_recent_logins_message(limit), ensure_ascii=False))
+                    await websocket.send_text(json.dumps(_build_recent_logins_message(state, limit), ensure_ascii=False))
                 elif msg.get("type") == "get_login_trends":
                     hours = msg.get("hours", 24)
-                    await websocket.send_text(json.dumps(_build_login_trends_message(hours), ensure_ascii=False))
+                    await websocket.send_text(json.dumps(_build_login_trends_message(state, hours), ensure_ascii=False))
             except json.JSONDecodeError:
                 pass
             except Exception:

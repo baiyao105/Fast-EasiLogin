@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import contextlib
 import hashlib
@@ -12,6 +14,7 @@ from fast_easilogin.core.constants import (
     AUTH_APP_ANDROID,
     AUTH_REFER_ANDROID,
     CRYPTO_VERSION,
+    HTTP_SERVER_ERROR,
     LOGIN_TTL,
     LOGIN_URL,
     TOKEN_MASK_MIN_LEN,
@@ -20,10 +23,9 @@ from fast_easilogin.core.constants import (
     USERINFO_TTL,
 )
 from fast_easilogin.core.errors import LoginFailedError, NetworkError, RequestFailedError
-from fast_easilogin.core.http_client import request_with_retry
+from fast_easilogin.core.services import Services
 from fast_easilogin.storage import (
     find_user,
-    get_cache,
     load_appsettings_model,
     load_users_async,
     save_users_async,
@@ -33,13 +35,18 @@ from fast_easilogin.storage.models import AggregatedUserInfo, LoginResult, UserI
 _LOGIN_TASKS: dict[str, asyncio.Task[LoginResult]] = {}
 
 
-async def authenticate_user(userid: str, password_plain: str, userid_for_disable: str | None = None) -> LoginResult:
+async def authenticate_user(
+    services: Services,
+    userid: str,
+    password_plain: str,
+    userid_for_disable: str | None = None,
+) -> LoginResult:
     """登录认证"""
     existing = _LOGIN_TASKS.get(userid)
     if existing is not None and not existing.done():
         return await existing
 
-    task = asyncio.create_task(_do_login(userid, password_plain, userid_for_disable))
+    task = asyncio.create_task(_do_login(services, userid, password_plain, userid_for_disable))
     _LOGIN_TASKS[userid] = task
     try:
         return await task
@@ -47,11 +54,13 @@ async def authenticate_user(userid: str, password_plain: str, userid_for_disable
         _LOGIN_TASKS.pop(userid, None)
 
 
-async def _do_login(userid: str, password_plain: str, userid_for_disable: str | None = None) -> LoginResult:
-    """执行登录请求
-
-    先 MD5 再发送
-    """
+async def _do_login(
+    services: Services,
+    userid: str,
+    password_plain: str,
+    userid_for_disable: str | None = None,
+) -> LoginResult:
+    """登录"""
     md5_pwd = hashlib.md5(password_plain.encode("utf-8")).hexdigest()
     payload = {
         "username": userid,
@@ -65,7 +74,9 @@ async def _do_login(userid: str, password_plain: str, userid_for_disable: str | 
         "Cookie": "x-auth-app=EasiNote5; x-auth-token=",
     }
     try:
-        resp = await request_with_retry("POST", LOGIN_URL, headers=headers, json=payload)
+        resp = await services.http.post(LOGIN_URL, headers=headers, json=payload)
+        if resp.status_code >= HTTP_SERVER_ERROR:
+            raise RequestFailedError(message=f"服务端错误: status={resp.status_code}", url=LOGIN_URL)
         data = resp.json()
         token = data.get("data", {}).get("token")
     except RequestFailedError as err:
@@ -118,16 +129,13 @@ async def _do_login(userid: str, password_plain: str, userid_for_disable: str | 
     )
 
 
-async def fetch_user_info_with_token(token: str) -> dict[str, Any]:
-    """通过 token 获取用户详情
-
-    结果缓存到内存 KV 用于变更检测
-    """
-    rc = get_cache()
+async def fetch_user_info_with_token(services: Services, token: str) -> dict[str, Any]:
+    """获取用户详情"""
+    rc = services.cache
     headers = {"X-auth-refer": AUTH_REFER_ANDROID, "X-Crypto-Version": CRYPTO_VERSION, "User-Agent": USER_AGENT_ANDROID}
     cookies = {"x-auth-app": AUTH_APP_ANDROID, "x-auth-token": token}
     try:
-        resp = await request_with_retry("GET", USER_INFO_URL, headers=headers, cookies=cookies)
+        resp = await services.http.get(USER_INFO_URL, headers=headers, cookies=cookies)
         data = resp.json()
         result = data.get("data", {})
         uid = str(result.get("uid") or "")
@@ -163,12 +171,14 @@ def select_fields(data: dict[str, Any], fields: list[str] | None) -> dict[str, A
     return {k: data.get(k) for k in fields}
 
 
-async def get_user_info(userid: str, password_plain: str, fields: list[str] | None = None) -> dict[str, Any]:
-    """获取聚合用户信息
-
-    缓存 -> 登录获取 token -> 获取用户详情 -> 合并缓存
-    """
-    rc = get_cache()
+async def get_user_info(
+    services: Services,
+    userid: str,
+    password_plain: str,
+    fields: list[str] | None = None,
+) -> dict[str, Any]:
+    """聚合用户信息"""
+    rc = services.cache
     md5_pwd = hashlib.md5(password_plain.encode("utf-8")).hexdigest()
     cache_key = f"{userid}:{md5_pwd}"
     cached = await rc.get(f"agg:{cache_key}")
@@ -183,10 +193,10 @@ async def get_user_info(userid: str, password_plain: str, fields: list[str] | No
     rec = find_user(userid, users)
     phone_for_login = rec.phone if rec else userid
     login: LoginResult = await authenticate_user(
-        phone_for_login, password_plain, userid_for_disable=(rec.user_id if rec else None)
+        services, phone_for_login, password_plain, userid_for_disable=(rec.user_id if rec else None)
     )
     token = login.token
-    info = await fetch_user_info_with_token(token) if token else {}
+    info = await fetch_user_info_with_token(services, token) if token else {}
     ext = info.get("userInfoExtendVo") or {}
     identity = ext.get("userIdentityInfo") or {}
     agg = AggregatedUserInfo(

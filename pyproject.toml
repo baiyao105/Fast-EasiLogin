@@ -14,8 +14,8 @@ dev = [
 [project]
 dependencies = [
   "PyYAML ~= 6.0.2",
-  "fastapi ~=0.136.0",
-  "granian[rloop] ~=2.0.0",
+  "fastapi ~=0.141.0",
+  "granian[rloop] ~=2.8.0",
   "httpx[http2] ~= 0.28.1",
   "loguru ~= 0.7.2",
   "pydantic ~=2.13.0",
@@ -123,6 +123,9 @@ select = [
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 "fast_easilogin/__main__.py" = ["PLC0415"]
+"fast_easilogin/app/runner.py" = ["PLC0415"]
+"fast_easilogin/app/runtime.py" = ["PLC0415", "TRY003"]
+"fast_easilogin/auth/service.py" = ["TRY301"]
 "tests/*" = ["B011"]
 
 [tool.ty.analysis]

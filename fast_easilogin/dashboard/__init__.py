@@ -1,6 +1,5 @@
-"""Dashboard 模块"""
+"""Dashboard"""
 
-from fast_easilogin.dashboard.app import app
-from fast_easilogin.dashboard.server import run_dashboard_server
+from fast_easilogin.dashboard.app import create_app
 
-__all__ = ["app", "run_dashboard_server"]
+__all__ = ["create_app"]

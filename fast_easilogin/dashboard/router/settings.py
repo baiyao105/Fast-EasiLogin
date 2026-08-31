@@ -1,9 +1,9 @@
 """设置路由"""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from fast_easilogin.dashboard.models import ApiResponse
-from fast_easilogin.storage import clear_cache, load_appsettings_model
+from fast_easilogin.storage import load_appsettings_model
 from fast_easilogin.storage.config_manager import AppSettingsManager
 from fast_easilogin.storage.models import SettingsUpdate
 
@@ -45,7 +45,7 @@ async def update_settings(body: SettingsUpdate):
 
 
 @router.post("/clear-cache")
-async def clear_cache_api():
+async def clear_cache_api(request: Request):
     """清空缓存"""
-    await clear_cache()
+    await request.app.state.services.cache.clear()
     return ApiResponse(message="cache_cleared")
