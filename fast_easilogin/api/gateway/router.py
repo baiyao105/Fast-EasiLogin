@@ -40,7 +40,9 @@ def ok_response(data: dict | list | None = None) -> dict:
     return r
 
 
-async def _update_user_profile(services: Services, uid: str, token: str, nickname: str | None = None, head_img: str | None = None) -> None:
+async def _update_user_profile(
+    services: Services, uid: str, token: str, nickname: str | None = None, head_img: str | None = None
+) -> None:
     state = services.state
     acquired = await state.acquire_inflight(uid)
     if not acquired:
