@@ -29,7 +29,12 @@ from fast_easilogin.storage import (
     load_settings,
     save_users,
 )
-from fast_easilogin.storage.models import AggregatedUserInfo, LoginResult, UserIdentityInfo, UserInfoExtendVo
+from fast_easilogin.storage.models import (
+    AggregatedUserInfo,
+    LoginResult,
+    UserIdentityInfo,
+    UserInfoExtendVo,
+)
 
 _LOGIN_TASKS: dict[str, asyncio.Task[LoginResult]] = {}
 
@@ -40,7 +45,6 @@ async def authenticate_user(
     password_plain: str,
     userid_for_disable: str | None = None,
 ) -> LoginResult:
-    """登录认证"""
     existing = _LOGIN_TASKS.get(userid)
     if existing is not None and not existing.done():
         return await existing
@@ -59,7 +63,6 @@ async def _do_login(
     password_plain: str,
     userid_for_disable: str | None = None,
 ) -> LoginResult:
-    """登录"""
     md5_pwd = hashlib.md5(password_plain.encode("utf-8")).hexdigest()
     payload = {
         "username": userid,
@@ -92,7 +95,7 @@ async def _do_login(
         msg = data.get("message") if isinstance(data, dict) else None
         logger.warning("登录失败: userid={} code={} message={}", userid, (code or "-"), str(msg or "-"))
         cfg = await load_settings()
-        should_disable = (userid_for_disable is None) or cfg.Global.enable_password_error_disable
+        should_disable = (userid_for_disable is None) or cfg.global_settings.enable_password_error_disable
         if should_disable:
             try:
                 target_user = await find_user(userid_for_disable or userid)
@@ -108,19 +111,18 @@ async def _do_login(
     u = data.get("data", {}).get("user", {})
     return LoginResult(
         token=token,
-        head_img=u.get("photoUrl") or "",
+        avatar_url=u.get("photoUrl") or "",
         phone=u.get("phone") or userid,
-        joinUnitTime=u.get("joinUnitTime"),
-        cityId=u.get("cityId"),
-        accountId=u.get("accountId"),
-        nickName=u.get("nickName"),
+        nick_name=u.get("nickName"),
         user_name=u.get("nickName"),
-        realName=u.get("realName"),
-        username=u.get("username") or userid,
+        real_name=u.get("realName"),
         user_id=u.get("username") or userid,
-        wechatUid=u.get("wechatUid"),
         uid=u.get("uid"),
-        appCode=u.get("appCode"),
+        account_id=u.get("accountId"),
+        wechat_uid=u.get("wechatUid"),
+        app_code=u.get("appCode"),
+        join_unit_time=u.get("joinUnitTime"),
+        city_id=u.get("cityId"),
         raw=data,
     )
 
@@ -196,39 +198,37 @@ async def get_user_info(
     identity = ext.get("userIdentityInfo") or {}
     agg = AggregatedUserInfo(
         token=token,
-        head_img=(info.get("photoUrl") or login.head_img),
-        photoUrl=info.get("photoUrl"),
-        phone=(info.get("phone") or login.phone or userid),
-        joinUnitTime=info.get("joinUnitTime") or login.joinUnitTime,
-        cityId=info.get("cityId") or login.cityId,
-        accountId=info.get("accountId") or login.accountId,
-        accountType=info.get("accountType"),
-        address=info.get("address"),
-        nickName=info.get("nickName") or login.nickName,
+        avatar_url=info.get("photoUrl") or login.avatar_url,
+        phone=info.get("phone") or login.phone or userid,
+        nick_name=info.get("nickName") or login.nick_name,
         user_name=info.get("nickName") or login.user_name,
-        realName=info.get("realName") or login.realName,
-        username=info.get("username") or login.username or userid,
+        real_name=info.get("realName") or login.real_name,
         user_id=info.get("username") or login.user_id or userid,
-        wechatUid=info.get("wechatUid") or login.wechatUid,
         uid=info.get("uid") or login.uid,
-        appCode=info.get("appCode") or login.appCode,
-        provinceId=info.get("provinceId"),
-        riskLevel=info.get("riskLevel"),
-        stageId=info.get("stageId"),
-        stageName=info.get("stageName"),
-        subjectId=info.get("subjectId"),
-        subjectName=info.get("subjectName"),
-        unitId=info.get("unitId"),
-        unitName=info.get("unitName"),
+        account_id=info.get("accountId") or login.account_id,
+        wechat_uid=info.get("wechatUid") or login.wechat_uid,
+        app_code=info.get("appCode") or login.app_code,
+        join_unit_time=info.get("joinUnitTime") or login.join_unit_time,
+        city_id=info.get("cityId") or login.city_id,
+        account_type=info.get("accountType"),
+        address=info.get("address"),
+        province_id=info.get("provinceId"),
+        risk_level=info.get("riskLevel"),
+        stage_id=info.get("stageId"),
+        stage_name=info.get("stageName"),
+        subject_id=info.get("subjectId"),
+        subject_name=info.get("subjectName"),
+        unit_id=info.get("unitId"),
+        unit_name=info.get("unitName"),
         version=info.get("version"),
-        createTime=info.get("createTime"),
+        create_time=info.get("createTime"),
         email=info.get("email"),
-        dingdingUid=info.get("dingdingUid"),
-        userInfoExtendVo=UserInfoExtendVo(
-            picUrl=ext.get("picUrl"),
-            unreadMsgCount=ext.get("unreadMsgCount"),
-            userIdentityInfo=UserIdentityInfo(otherIdentitys=identity.get("otherIdentitys", [])),
-            virtualAvatarPhotoUrl=ext.get("virtualAvatarPhotoUrl"),
+        dingding_uid=info.get("dingdingUid"),
+        user_info_extend_vo=UserInfoExtendVo(
+            pic_url=ext.get("picUrl"),
+            unread_msg_count=ext.get("unreadMsgCount"),
+            user_identity_info=UserIdentityInfo(other_identities=identity.get("otherIdentitys", [])),
+            virtual_avatar_url=ext.get("virtualAvatarPhotoUrl"),
         )
         if ext
         else None,

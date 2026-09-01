@@ -33,15 +33,14 @@ async def _get_session() -> AsyncSession:
 
 
 def _table_to_record(u: UserTable) -> UserRecord:
-    """数据库模型到DTO"""
     return UserRecord(
         user_id=u.user_id,
         active=u.active,
         phone=u.phone,
         password=u.password,
-        user_nickname=u.user_nickname,
-        user_realname=u.user_realname,
-        head_img=u.head_img,
+        nick_name=u.nick_name,
+        real_name=u.real_name,
+        avatar_url=u.avatar_url,
         pt_timestamp=u.pt_timestamp,
     )
 
@@ -88,9 +87,9 @@ async def save_users(users: dict[str, UserRecord], user_ids: list[str] | None = 
                 existing.active = record.active
                 existing.phone = record.phone
                 existing.password = record.password
-                existing.user_nickname = record.user_nickname
-                existing.user_realname = record.user_realname
-                existing.head_img = record.head_img
+                existing.nick_name = record.nick_name
+                existing.real_name = record.real_name
+                existing.avatar_url = record.avatar_url
                 existing.pt_timestamp = record.pt_timestamp
                 existing.updated_at = now
             else:
@@ -100,9 +99,9 @@ async def save_users(users: dict[str, UserRecord], user_ids: list[str] | None = 
                         active=record.active,
                         phone=record.phone,
                         password=record.password,
-                        user_nickname=record.user_nickname,
-                        user_realname=record.user_realname,
-                        head_img=record.head_img,
+                        nick_name=record.nick_name,
+                        real_name=record.real_name,
+                        avatar_url=record.avatar_url,
                         pt_timestamp=record.pt_timestamp,
                         created_at=now,
                         updated_at=now,
@@ -169,7 +168,7 @@ async def load_settings() -> AppSettings:
                 except json.JSONDecodeError:
                     logger.warning("配置值解析失败: key={} value={}", k, v)
 
-        settings_dict = _DEFAULT_SETTINGS.model_dump()
+        settings_dict = _DEFAULT_SETTINGS.model_dump(by_alias=True)
         if global_data:
             settings_dict["Global"].update(global_data)
 
@@ -183,7 +182,7 @@ async def save_settings(settings: AppSettings) -> bool:
     session = await _get_session()
     try:
         now = datetime.now(UTC)
-        data = settings.model_dump()
+        data = settings.model_dump(by_alias=True)
         global_data = data.get("Global", {})
 
         for field, value in global_data.items():
@@ -208,7 +207,7 @@ async def save_settings(settings: AppSettings) -> bool:
 async def update_settings(update_data: dict[str, Any]) -> bool:
     """部分更新配置"""
     current = await load_settings()
-    current_dict = current.model_dump()
+    current_dict = current.model_dump(by_alias=True)
 
     if update_data.get("Global"):
         current_dict["Global"].update(update_data["Global"])
@@ -220,7 +219,7 @@ async def update_settings(update_data: dict[str, Any]) -> bool:
 async def _write_default_settings(session: AsyncSession) -> None:
     """写默认配置"""
     now = datetime.now(UTC)
-    defaults = _DEFAULT_SETTINGS.model_dump()
+    defaults = _DEFAULT_SETTINGS.model_dump(by_alias=True)
     for field, value in defaults.get("Global", {}).items():
         session.add(SettingTable(key=f"global.{field}", value=json.dumps(value), updated_at=now))
     await session.commit()

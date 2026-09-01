@@ -1,5 +1,3 @@
-"""账户管理路由"""
-
 from fastapi import APIRouter, HTTPException
 from loguru import logger
 
@@ -12,15 +10,14 @@ router = APIRouter(prefix="/accounts", tags=["accounts"])
 
 @router.get("")
 async def list_accounts():
-    """获取账户列表"""
     users = await load_users()
     data = [
         AccountItem(
-            pt_nickname=u.user_nickname or "",
+            pt_nickname=u.nick_name or "",
             pt_appid=u.user_id,
             pt_userid=u.user_id,
-            pt_username=u.user_realname or u.user_id,
-            pt_photourl=u.head_img,
+            pt_username=u.real_name or u.user_id,
+            pt_photourl=u.avatar_url,
             status="active" if u.active else "inactive",
             login_count=0,
             last_login=None,
@@ -33,7 +30,6 @@ async def list_accounts():
 
 @router.post("")
 async def add_account(body: AddAccountRequest):
-    """添加账户"""
     userid = body.userid.strip()
     password = body.password
     if not userid or not password:
@@ -47,9 +43,9 @@ async def add_account(body: AddAccountRequest):
         active=True,
         phone=userid,
         password=password,
-        user_nickname=body.user_name,
-        user_realname="",
-        head_img=body.head_img,
+        nick_name=body.user_name,
+        real_name="",
+        avatar_url=body.head_img,
         pt_timestamp=None,
     )
     await save_users({userid: record})

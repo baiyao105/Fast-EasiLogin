@@ -69,7 +69,7 @@ async def get_cache() -> InMemoryKVCache:
     from fast_easilogin.storage.store import load_settings  # noqa: PLC0415
 
     settings = await load_settings()
-    capacity = int(settings.Global.cache_max_entries)
+    capacity = int(settings.global_settings.cache_max_entries)
     _mem_cache = InMemoryKVCache(capacity)
     return _mem_cache
 

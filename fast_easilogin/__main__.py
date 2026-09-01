@@ -43,7 +43,7 @@ if sys.platform == "win32":
 
             bootstrap(log_level="INFO")
             settings = load_settings_sync()
-            enable_eventlog = settings.Global.enable_eventlog
+            enable_eventlog = settings.global_settings.enable_eventlog
             report_event = setup_win_eventlog(enable_eventlog)
             install_global_handlers(report_event)
 
@@ -52,8 +52,8 @@ if sys.platform == "win32":
             with _runtime_lock:
                 _runtime = runtime
 
-            api_cfg = ServerConfig(host="0.0.0.0", port=settings.Global.port)
-            dashboard_cfg = ServerConfig(host="127.0.0.1", port=settings.Global.webui_port)
+            api_cfg = ServerConfig(host="0.0.0.0", port=settings.global_settings.port)
+            dashboard_cfg = ServerConfig(host="127.0.0.1", port=settings.global_settings.webui_port)
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:

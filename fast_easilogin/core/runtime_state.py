@@ -30,14 +30,14 @@ class RuntimeState:
             "failed_logins": 0,
         }
 
-    def record_login(self, username: str, ip: str, status: str, head_img: str = "") -> None:
+    def record_login(self, username: str, ip: str, status: str, avatar_url: str = "") -> None:
         self._recent_logins.appendleft(
             {
                 "username": username,
                 "login_time": datetime.now(UTC).isoformat(),
                 "ip_address": ip,
                 "status": status,
-                "head_img": head_img,
+                "head_img": avatar_url,
             }
         )
         self._stats["total_logins"] += 1

@@ -41,7 +41,7 @@ def ok_response(data: dict | list | None = None) -> dict:
 
 
 async def _update_user_profile(
-    services: Services, uid: str, token: str, nickname: str | None = None, head_img: str | None = None
+    services: Services, uid: str, token: str, nickname: str | None = None, avatar_url: str | None = None
 ) -> None:
     state = services.state
     acquired = await state.acquire_inflight(uid)
@@ -55,13 +55,13 @@ async def _update_user_profile(
         fetched = await fetch_user_info_with_token(services, token)
         if not fetched:
             return
-        new_name = fetched.get("nickName") or nickname or rec.user_nickname
-        new_img = fetched.get("photoUrl") or head_img or rec.head_img
-        real_name = fetched.get("realName") or rec.user_realname or ""
+        new_name = fetched.get("nickName") or nickname or rec.nick_name
+        new_img = fetched.get("photoUrl") or avatar_url or rec.avatar_url
+        real_name = fetched.get("realName") or rec.real_name or ""
         changed = (
-            (new_name or "") != (rec.user_nickname or "")
-            or (real_name or "") != (rec.user_realname or "")
-            or (new_img or "") != (rec.head_img or "")
+            (new_name or "") != (rec.nick_name or "")
+            or (real_name or "") != (rec.real_name or "")
+            or (new_img or "") != (rec.avatar_url or "")
         )
         if not changed:
             return
@@ -70,14 +70,14 @@ async def _update_user_profile(
             active=rec.active,
             phone=rec.phone,
             password=rec.password,
-            user_nickname=new_name or "",
-            user_realname=real_name,
-            head_img=new_img or "",
+            nick_name=new_name or "",
+            real_name=real_name,
+            avatar_url=new_img or "",
             pt_timestamp=rec.pt_timestamp,
         )
         await save_users(users, user_ids=[uid])
         logger.success(
-            "账户信息被更新: usrid({}) {}", uid, {"nickName": new_name, "realName": real_name, "head_img": new_img}
+            "账户信息被更新: usrid({}) {}", uid, {"nick_name": new_name, "real_name": real_name, "avatar_url": new_img}
         )
     except asyncio.CancelledError:
         raise
@@ -110,11 +110,11 @@ async def get_sso_list(pt_type: str | None = None):
     users = await load_users()
     data: list[dict[str, str]] = [
         {
-            "pt_nickname": u.user_nickname,
+            "pt_nickname": u.nick_name,
             "pt_appid": u.user_id,
             "pt_userid": u.user_id,
-            "pt_username": u.user_realname or u.user_id,
-            "pt_photourl": u.head_img,
+            "pt_username": u.real_name or u.user_id,
+            "pt_photourl": u.avatar_url,
         }
         for u in users.values()
         if u.active
@@ -141,10 +141,10 @@ async def sso_login_user(  # noqa: PLR0917
         token_info = await user_login(services, login_account, record.password, userid_for_disable=record.user_id)
     except Exception:
         services.state.record_login(
-            username=record.user_nickname or userid,
+            username=record.nick_name or userid,
             ip=request.client.host if request and request.client else "unknown",
             status="failed",
-            head_img="",
+            avatar_url="",
         )
         raise
     token = str(token_info.token)
@@ -158,23 +158,23 @@ async def sso_login_user(  # noqa: PLR0917
     logger.info(
         "账户被登录: usrid({}) : 账户信息({}, {}, {})",
         userid,
-        str(token_info.nickName or ""),
-        str(token_info.realName or ""),
-        str(token_info.joinUnitTime),
+        str(token_info.nick_name or ""),
+        str(token_info.real_name or ""),
+        str(token_info.join_unit_time),
     )
     background_tasks.add_task(
         _update_user_profile,
         services,
         record.user_id,
         token,
-        nickname=str(token_info.nickName or ""),
-        head_img=str(token_info.head_img or ""),
+        nickname=str(token_info.nick_name or ""),
+        avatar_url=str(token_info.avatar_url or ""),
     )
     services.state.record_login(
-        username=str(token_info.nickName or userid),
+        username=str(token_info.nick_name or userid),
         ip=request.client.host if request and request.client else "unknown",
         status="success",
-        head_img=str(token_info.head_img or ""),
+        avatar_url=str(token_info.avatar_url or ""),
     )
     return ok_response()
 
@@ -207,9 +207,9 @@ async def save_user(request: Request, body: SaveBody, background_tasks: Backgrou
             active=active_val,
             phone=body.userid,
             password=body.password,
-            user_nickname=body.user_name,
-            user_realname=(prev.user_realname if prev else ""),
-            head_img=body.head_img,
+            nick_name=body.user_name,
+            real_name=(prev.real_name if prev else ""),
+            avatar_url=body.head_img,
             pt_timestamp=(prev.pt_timestamp if prev else None),
         )
         await save_users(users, user_ids=[key_uid])
@@ -219,9 +219,9 @@ async def save_user(request: Request, body: SaveBody, background_tasks: Backgrou
     rec = users.get(uid)
     if rec and rec.pt_timestamp is not None and rec.pt_timestamp > body.pt_timestamp:
         return ok_response()
-    new_name = body.pt_nickname or (rec.user_nickname if rec else "")
-    new_img = body.pt_photourl or (rec.head_img if rec else "")
-    real_name = rec.user_realname if rec else ""
+    new_name = body.pt_nickname or (rec.nick_name if rec else "")
+    new_img = body.pt_photourl or (rec.avatar_url if rec else "")
+    real_name = rec.real_name if rec else ""
     candidate_token = str(body.pt_token or "")
     if candidate_token and (not candidate_token.endswith(TOKEN_OFFLINE_SUFFIX)):
         fetched_once = await fetch_user_info_with_token(services, candidate_token)
@@ -233,9 +233,9 @@ async def save_user(request: Request, body: SaveBody, background_tasks: Backgrou
         active=active_val,
         phone=(body.pt_username or (rec.phone if rec else "")),
         password=(rec.password if rec else ""),
-        user_nickname=new_name or "",
-        user_realname=real_name or (rec.user_realname if rec else ""),
-        head_img=new_img or "",
+        nick_name=new_name or "",
+        real_name=real_name or (rec.real_name if rec else ""),
+        avatar_url=new_img or "",
         pt_timestamp=body.pt_timestamp,
     )
     await save_users(users, user_ids=[key])
@@ -247,7 +247,7 @@ async def save_user(request: Request, body: SaveBody, background_tasks: Backgrou
             uid,
             body.pt_token,
             nickname=body.pt_nickname,
-            head_img=body.pt_photourl,
+            avatar_url=body.pt_photourl,
         )
 
     return ok_response()

@@ -21,7 +21,7 @@ async def get_dashboard_stats(request: Request):
     return DashboardStats(
         service_status="running",
         uptime_seconds=int(_time.time() - stats["start_time"]),
-        listen_port=settings.Global.port,
+        listen_port=settings.global_settings.port,
         total_logins=stats["total_logins"],
         success_logins=stats["success_logins"],
         failed_logins=stats["failed_logins"],

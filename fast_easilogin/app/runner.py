@@ -14,8 +14,8 @@ async def _run(runtime: AppRuntime) -> None:
     stop_event = asyncio.Event()
     try:
         settings = load_settings_sync()
-        api_cfg = ServerConfig(host="0.0.0.0", port=settings.Global.port)
-        dashboard_cfg = ServerConfig(host="127.0.0.1", port=settings.Global.webui_port)
+        api_cfg = ServerConfig(host="0.0.0.0", port=settings.global_settings.port)
+        dashboard_cfg = ServerConfig(host="127.0.0.1", port=settings.global_settings.webui_port)
 
         await runtime.start(api_cfg, dashboard_cfg)
         await runtime.run(stop_event)
@@ -55,7 +55,7 @@ def run(argv: list[str] | None = None) -> None:
     bootstrap(log_level=mode.log_level)
 
     settings = load_settings_sync()
-    enable_eventlog = settings.Global.enable_eventlog
+    enable_eventlog = settings.global_settings.enable_eventlog
     report_event = setup_win_eventlog(enable_eventlog)
     install_global_handlers(report_event)
 

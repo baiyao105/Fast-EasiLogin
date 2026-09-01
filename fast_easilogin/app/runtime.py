@@ -65,7 +65,7 @@ class AppRuntime:
         if not _is_port_available(dashboard_cfg.host, dashboard_cfg.port):
             raise RuntimeError(f"Dashboard 端口 {dashboard_cfg.port} 已被占用")
 
-        access_log = settings.Global.enable_eventlog
+        access_log = settings.global_settings.enable_eventlog
         self.api_server = GranianServer(
             api_app,
             address=api_cfg.host,
