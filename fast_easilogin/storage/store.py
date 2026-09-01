@@ -94,18 +94,20 @@ async def save_users(users: dict[str, UserRecord], user_ids: list[str] | None = 
                 existing.pt_timestamp = record.pt_timestamp
                 existing.updated_at = now
             else:
-                session.add(UserTable(
-                    user_id=record.user_id,
-                    active=record.active,
-                    phone=record.phone,
-                    password=record.password,
-                    user_nickname=record.user_nickname,
-                    user_realname=record.user_realname,
-                    head_img=record.head_img,
-                    pt_timestamp=record.pt_timestamp,
-                    created_at=now,
-                    updated_at=now,
-                ))
+                session.add(
+                    UserTable(
+                        user_id=record.user_id,
+                        active=record.active,
+                        phone=record.phone,
+                        password=record.password,
+                        user_nickname=record.user_nickname,
+                        user_realname=record.user_realname,
+                        head_img=record.head_img,
+                        pt_timestamp=record.pt_timestamp,
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
         await session.commit()
         return True
     except Exception:
@@ -239,6 +241,7 @@ def load_settings_sync() -> AppSettings:
 
     if loop and loop.is_running():
         import concurrent.futures  # noqa: PLC0415
+
         with concurrent.futures.ThreadPoolExecutor() as pool:
             future = pool.submit(asyncio.run, _init_and_load())
             return cast(AppSettings, future.result())

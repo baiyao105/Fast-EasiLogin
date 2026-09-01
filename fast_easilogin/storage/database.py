@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlmodel import SQLModel
 
