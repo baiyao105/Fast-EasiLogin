@@ -26,9 +26,8 @@ from fast_easilogin.core.errors import LoginFailedError, NetworkError, RequestFa
 from fast_easilogin.core.services import Services
 from fast_easilogin.storage import (
     find_user,
-    load_appsettings_model,
-    load_users_async,
-    save_users_async,
+    load_settings,
+    save_users,
 )
 from fast_easilogin.storage.models import AggregatedUserInfo, LoginResult, UserIdentityInfo, UserInfoExtendVo
 
@@ -92,17 +91,14 @@ async def _do_login(
         code = data.get("statusCode") if isinstance(data, dict) else None
         msg = data.get("message") if isinstance(data, dict) else None
         logger.warning("登录失败: userid={} code={} message={}", userid, (code or "-"), str(msg or "-"))
-        cfg = load_appsettings_model()
-        # 密码错误时自动禁用账户
+        cfg = await load_settings()
         should_disable = (userid_for_disable is None) or cfg.Global.enable_password_error_disable
         if should_disable:
             try:
-                users = await load_users_async()
-                target_user = find_user(userid_for_disable or userid, users)
+                target_user = await find_user(userid_for_disable or userid)
                 if target_user and target_user.active:
                     target_user.active = False
-                    users[target_user.user_id] = target_user
-                    await save_users_async({target_user.user_id: target_user})
+                    await save_users({target_user.user_id: target_user})
                     logger.info("因密码错误自动禁用账户: user_id={}", target_user.user_id)
             except OSError as e:
                 logger.error("自动禁用账户失败: {}", str(e))
@@ -189,8 +185,7 @@ async def get_user_info(
         except Exception:
             pass
 
-    users = await load_users_async()
-    rec = find_user(userid, users)
+    rec = await find_user(userid)
     phone_for_login = rec.phone if rec else userid
     login: LoginResult = await authenticate_user(
         services, phone_for_login, password_plain, userid_for_disable=(rec.user_id if rec else None)

@@ -9,7 +9,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from loguru import logger
 
 from fast_easilogin.core.runtime_state import RuntimeState
-from fast_easilogin.storage import load_appsettings_model
+from fast_easilogin.storage import load_settings
 
 router = APIRouter(tags=["websocket"])
 
@@ -30,7 +30,7 @@ async def _broadcast_stats(state: RuntimeState) -> None:
             continue
 
         try:
-            data = _build_stats_message(state)
+            data = await _build_stats_message(state)
             message = json.dumps(data, ensure_ascii=False)
             disconnected: list[WebSocket] = []
             for client in clients_snapshot:
@@ -48,9 +48,9 @@ async def _broadcast_stats(state: RuntimeState) -> None:
         await asyncio.sleep(1)
 
 
-def _build_stats_message(state: RuntimeState) -> dict[str, Any]:
+async def _build_stats_message(state: RuntimeState) -> dict[str, Any]:
     stats = state.get_stats()
-    settings = load_appsettings_model()
+    settings = await load_settings()
     return {
         "type": "stats",
         "data": {
@@ -81,7 +81,7 @@ def _build_login_trends_message(state: RuntimeState, hours: int = 24) -> dict[st
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
     """WebSocket 端点"""
-    global _push_task
+    global _push_task  # noqa: PLW0603
 
     try:
         await websocket.accept()
@@ -100,7 +100,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
     try:
         try:
-            await websocket.send_text(json.dumps(_build_stats_message(state), ensure_ascii=False))
+            await websocket.send_text(json.dumps(await _build_stats_message(state), ensure_ascii=False))
             await websocket.send_text(json.dumps(_build_recent_logins_message(state), ensure_ascii=False))
         except Exception:
             return
@@ -117,7 +117,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 msg = json.loads(data)
                 if msg.get("type") == "get_recent_logins":
                     limit = msg.get("limit", 20)
-                    await websocket.send_text(json.dumps(_build_recent_logins_message(state, limit), ensure_ascii=False))
+                    await websocket.send_text(
+                        json.dumps(_build_recent_logins_message(state, limit), ensure_ascii=False)
+                    )
                 elif msg.get("type") == "get_login_trends":
                     hours = msg.get("hours", 24)
                     await websocket.send_text(json.dumps(_build_login_trends_message(state, hours), ensure_ascii=False))

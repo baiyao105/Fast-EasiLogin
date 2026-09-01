@@ -1,12 +1,43 @@
+from __future__ import annotations
+
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
+from sqlmodel import Field, SQLModel
 
 CURRENT_SCHEMA_VERSION = 1
 
 
+class UserTable(SQLModel, table=True):
+    """用户表"""
+
+    __tablename__ = "users"
+
+    user_id: str = Field(primary_key=True, max_length=128)
+    active: bool = Field(default=True, index=True)
+    phone: str = Field(default="", max_length=32, index=True)
+    password: str = Field(default="")
+    user_nickname: str = Field(default="", max_length=128)
+    user_realname: str | None = Field(default=None, max_length=128)
+    head_img: str = Field(default="")
+    pt_timestamp: int | None = Field(default=None)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class SettingTable(SQLModel, table=True):
+    """配置表 (KV 结构)"""
+
+    __tablename__ = "settings"
+
+    key: str = Field(primary_key=True, max_length=128)
+    value: str = Field(default="")
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
 class UserRecord(BaseModel):
-    """用户记录"""
+    """用户记录 DTO"""
 
     user_id: str
     active: bool = True
@@ -198,10 +229,6 @@ class SettingsUpdate(BaseModel):
     """设置更新请求"""
 
     Global: GlobalSettingsUpdate | None = None
-    cache_ttl: int | None = None
-    enable_autostart: bool | None = None
-    log_level: str | None = None
-    enable_logging: bool | None = None
 
 
 class AccountDeleteRequest(BaseModel):

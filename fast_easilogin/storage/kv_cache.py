@@ -4,8 +4,6 @@ import threading
 import time
 from collections import OrderedDict
 
-from fast_easilogin.storage.config_manager import load_appsettings_model
-
 _mem_cache: InMemoryKVCache | None = None
 
 
@@ -49,7 +47,6 @@ class InMemoryKVCache:
             if key in self._data:
                 del self._data[key]
             self._data[key] = (data, exp)
-            # 超容量时淘汰最旧条目
             while len(self._data) > self._capacity:
                 self._data.popitem(last=False)
 
@@ -64,19 +61,22 @@ class InMemoryKVCache:
             self._data.clear()
 
 
-def get_cache() -> InMemoryKVCache:
+async def get_cache() -> InMemoryKVCache:
     """获取全局缓存 (单例)"""
     global _mem_cache  # noqa: PLW0603
     if _mem_cache is not None:
         return _mem_cache
-    capacity = int(load_appsettings_model().Global.cache_max_entries)
+    from fast_easilogin.storage.store import load_settings  # noqa: PLC0415
+
+    settings = await load_settings()
+    capacity = int(settings.Global.cache_max_entries)
     _mem_cache = InMemoryKVCache(capacity)
     return _mem_cache
 
 
 async def clear_cache() -> None:
     """清空全局缓存"""
-    r = get_cache()
+    r = await get_cache()
     await r.clear()
 
 

@@ -39,15 +39,15 @@ if sys.platform == "win32":
             from fast_easilogin.app.bootstrap import bootstrap
             from fast_easilogin.app.runtime import AppRuntime, ServerConfig
             from fast_easilogin.app.utils import install_global_handlers, setup_win_eventlog
-            from fast_easilogin.storage import load_appsettings_model
+            from fast_easilogin.storage import load_settings_sync
 
             bootstrap(log_level="INFO")
-            settings = load_appsettings_model()
+            settings = load_settings_sync()
             enable_eventlog = settings.Global.enable_eventlog
             report_event = setup_win_eventlog(enable_eventlog)
             install_global_handlers(report_event)
 
-            global _runtime
+            global _runtime  # noqa: PLW0603
             runtime = AppRuntime()
             with _runtime_lock:
                 _runtime = runtime

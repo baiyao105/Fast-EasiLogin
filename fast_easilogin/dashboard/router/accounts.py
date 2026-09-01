@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException
 from loguru import logger
 
 from fast_easilogin.dashboard.models import AccountItem, AddAccountRequest, ApiResponse
-from fast_easilogin.storage import load_users_async, save_users_async
+from fast_easilogin.storage import delete_user, load_users, save_users, user_exists
 from fast_easilogin.storage.models import UserRecord
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
@@ -13,7 +13,7 @@ router = APIRouter(prefix="/accounts", tags=["accounts"])
 @router.get("")
 async def list_accounts():
     """获取账户列表"""
-    users = await load_users_async()
+    users = await load_users()
     data = [
         AccountItem(
             pt_nickname=u.user_nickname or "",
@@ -39,8 +39,10 @@ async def add_account(body: AddAccountRequest):
     if not userid or not password:
         raise HTTPException(status_code=400, detail="userid and password required")
 
-    users = await load_users_async()
-    users[userid] = UserRecord(
+    if await user_exists(userid):
+        raise HTTPException(status_code=409, detail="user_already_exists")
+
+    record = UserRecord(
         user_id=userid,
         active=True,
         phone=userid,
@@ -50,7 +52,7 @@ async def add_account(body: AddAccountRequest):
         head_img=body.head_img,
         pt_timestamp=None,
     )
-    await save_users_async(users, user_ids=[userid])
+    await save_users({userid: record})
     logger.info("Dashboard 添加账户: user_id={}", userid)
     return ApiResponse(message="account_added")
 
@@ -58,10 +60,9 @@ async def add_account(body: AddAccountRequest):
 @router.delete("/{userid}")
 async def delete_account(userid: str):
     """删除账户"""
-    users = await load_users_async()
-    if userid not in users:
+    if not await user_exists(userid):
         raise HTTPException(status_code=404, detail="user_not_found")
-    del users[userid]
-    await save_users_async(users)
+
+    await delete_user(userid)
     logger.info("Dashboard 删除账户: user_id={}", userid)
     return ApiResponse(message="account_deleted")

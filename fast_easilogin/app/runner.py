@@ -6,14 +6,14 @@ from fast_easilogin.app.bootstrap import bootstrap
 from fast_easilogin.app.mode import parse_mode
 from fast_easilogin.app.runtime import AppRuntime, ServerConfig
 from fast_easilogin.app.utils import install_global_handlers, setup_win_eventlog
-from fast_easilogin.storage import load_appsettings_model
+from fast_easilogin.storage import load_settings_sync
 
 
 async def _run(runtime: AppRuntime) -> None:
     """主协程"""
     stop_event = asyncio.Event()
     try:
-        settings = load_appsettings_model()
+        settings = load_settings_sync()
         api_cfg = ServerConfig(host="0.0.0.0", port=settings.Global.port)
         dashboard_cfg = ServerConfig(host="127.0.0.1", port=settings.Global.webui_port)
 
@@ -27,11 +27,13 @@ def run(argv: list[str] | None = None) -> None:
     """同步入口"""
     if argv is None:
         import sys
+
         argv = sys.argv[1:]
 
     # 服务安装/卸载是一次性操作
     if "--install-by-service" in argv:
         from fast_easilogin.core.service_manager import WindowsServiceManager
+
         WindowsServiceManager.install(
             service_name="SeewoFastLoginService",
             module="fast_easilogin.__main__",
@@ -45,13 +47,14 @@ def run(argv: list[str] | None = None) -> None:
 
     if "--uninstall-service" in argv:
         from fast_easilogin.core.service_manager import WindowsServiceManager
+
         WindowsServiceManager.remove("SeewoFastLoginService")
         return
 
     mode = parse_mode(argv)
     bootstrap(log_level=mode.log_level)
 
-    settings = load_appsettings_model()
+    settings = load_settings_sync()
     enable_eventlog = settings.Global.enable_eventlog
     report_event = setup_win_eventlog(enable_eventlog)
     install_global_handlers(report_event)

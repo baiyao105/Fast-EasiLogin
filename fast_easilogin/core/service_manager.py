@@ -38,7 +38,7 @@ class WindowsServiceManager:
     """Windows 服务操作工具"""
 
     @staticmethod
-    def install(
+    def install(  # noqa: PLR0917
         service_name: str,
         module: str,
         klass: str,

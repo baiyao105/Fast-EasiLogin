@@ -15,7 +15,7 @@ from fast_easilogin.auth.service import (
 )
 from fast_easilogin.core.constants import TOKEN_OFFLINE_SUFFIX
 from fast_easilogin.core.services import Services
-from fast_easilogin.storage import find_user, load_users_async, save_users_async
+from fast_easilogin.storage import find_user, load_users, save_users
 from fast_easilogin.storage.models import (
     AppSaveDataBody,
     DataResponse,
@@ -40,13 +40,15 @@ def ok_response(data: dict | list | None = None) -> dict:
     return r
 
 
-async def _update_user_profile(services: Services, uid: str, token: str, nickname: str | None = None, head_img: str | None = None) -> None:
+async def _update_user_profile(
+    services: Services, uid: str, token: str, nickname: str | None = None, head_img: str | None = None
+) -> None:
     state = services.state
     acquired = await state.acquire_inflight(uid)
     if not acquired:
         return
     try:
-        users = await load_users_async()
+        users = await load_users()
         rec = users.get(uid)
         if not rec:
             return
@@ -73,7 +75,7 @@ async def _update_user_profile(services: Services, uid: str, token: str, nicknam
             head_img=new_img or "",
             pt_timestamp=rec.pt_timestamp,
         )
-        await save_users_async(users, user_ids=[uid])
+        await save_users(users, user_ids=[uid])
         logger.success(
             "账户信息被更新: usrid({}) {}", uid, {"nickName": new_name, "realName": real_name, "head_img": new_img}
         )
@@ -105,7 +107,7 @@ async def user_info(request: Request, body: UserInfoRequest):
 @router.get("/getData/SSOLOGIN", response_model=DataResponse)
 async def get_sso_list(pt_type: str | None = None):
     """SSO接口列表"""
-    users = await load_users_async()
+    users = await load_users()
     data: list[dict[str, str]] = [
         {
             "pt_nickname": u.user_nickname,
@@ -121,7 +123,7 @@ async def get_sso_list(pt_type: str | None = None):
 
 
 @router.get("/getData/SSOLOGIN/{userid}", response_model=OkResponse)
-async def sso_login_user(
+async def sso_login_user(  # noqa: PLR0917
     userid: str,
     response: Response,
     request: Request,
@@ -131,8 +133,7 @@ async def sso_login_user(
 ):
     """SSO 登录"""
     services = _get_services(request)
-    users = await load_users_async()
-    record = find_user(userid, users)
+    record = await find_user(userid)
     if record is None or not record.active:
         raise HTTPException(status_code=404, detail={"message": "user_not_found", "statusCode": "404"})
     login_account = record.phone or userid
@@ -194,7 +195,7 @@ async def delete_data():
 async def save_user(request: Request, body: SaveBody, background_tasks: BackgroundTasks):
     """保存用户数据"""
     services = _get_services(request)
-    users = await load_users_async()
+    users = await load_users()
     if isinstance(body, SaveUserBody):
         key_uid = body.userid
         prev = users.get(body.userid) or next((r for r in users.values() if r.phone == body.userid), None)
@@ -211,7 +212,7 @@ async def save_user(request: Request, body: SaveBody, background_tasks: Backgrou
             head_img=body.head_img,
             pt_timestamp=(prev.pt_timestamp if prev else None),
         )
-        await save_users_async(users, user_ids=[key_uid])
+        await save_users(users, user_ids=[key_uid])
         logger.info("更新用户信息: phone={} user_id={}", body.userid, key_uid)
         return ok_response()
     uid = body.pt_userid
@@ -237,7 +238,7 @@ async def save_user(request: Request, body: SaveBody, background_tasks: Backgrou
         head_img=new_img or "",
         pt_timestamp=body.pt_timestamp,
     )
-    await save_users_async(users, user_ids=[key])
+    await save_users(users, user_ids=[key])
 
     if body.pt_token and not body.pt_token.endswith(TOKEN_OFFLINE_SUFFIX):
         background_tasks.add_task(

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Request
 
 from fast_easilogin.core.runtime_state import RuntimeState
 from fast_easilogin.dashboard.models import ApiResponse
-from fast_easilogin.storage import load_appsettings_model
+from fast_easilogin.storage import load_settings
 from fast_easilogin.storage.models import DashboardStats
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
@@ -17,7 +17,7 @@ async def get_dashboard_stats(request: Request):
     """统计数据"""
     state: RuntimeState = request.app.state.services.state
     stats = state.get_stats()
-    settings = load_appsettings_model()
+    settings = await load_settings()
     return DashboardStats(
         service_status="running",
         uptime_seconds=int(_time.time() - stats["start_time"]),
