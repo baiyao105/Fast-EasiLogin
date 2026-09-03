@@ -1,16 +1,20 @@
-from fastapi import APIRouter, HTTPException
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from fast_easilogin.dashboard.models import AccountItem, AddAccountRequest, ApiResponse
-from fast_easilogin.storage import delete_user, get_all_users, save_user, user_exists
+from fast_easilogin.storage import get_db
 from fast_easilogin.storage.models import UserRecord
+from fast_easilogin.storage.store import delete_user, get_all_users, save_user, user_exists
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
 
 @router.get("")
-async def list_accounts():
-    users = await get_all_users()
+async def list_accounts(db: AsyncSession = Depends(get_db)):
+    users = await get_all_users(db)
     data = [
         AccountItem(
             pt_nickname=u.nick_name or "",
@@ -29,13 +33,13 @@ async def list_accounts():
 
 
 @router.post("")
-async def add_account(body: AddAccountRequest):
+async def add_account(body: AddAccountRequest, db: AsyncSession = Depends(get_db)):
     userid = body.userid.strip()
     password = body.password
     if not userid or not password:
         raise HTTPException(status_code=400, detail="userid and password required")
 
-    if await user_exists(userid):
+    if await user_exists(db, userid):
         raise HTTPException(status_code=409, detail="user_already_exists")
 
     record = UserRecord(
@@ -48,17 +52,16 @@ async def add_account(body: AddAccountRequest):
         avatar_url=body.avatar_url,
         pt_timestamp=None,
     )
-    await save_user(record)
+    await save_user(db, record)
     logger.info("Dashboard 添加账户: user_id={}", userid)
     return ApiResponse(message="account_added")
 
 
 @router.delete("/{userid}")
-async def delete_account(userid: str):
-    """删除账户"""
-    if not await user_exists(userid):
+async def delete_account(userid: str, db: AsyncSession = Depends(get_db)):
+    if not await user_exists(db, userid):
         raise HTTPException(status_code=404, detail="user_not_found")
 
-    await delete_user(userid)
+    await delete_user(db, userid)
     logger.info("Dashboard 删除账户: user_id={}", userid)
     return ApiResponse(message="account_deleted")

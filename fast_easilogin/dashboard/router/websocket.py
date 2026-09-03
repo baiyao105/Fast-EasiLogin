@@ -5,11 +5,13 @@ import json
 import time as _time
 from typing import Any
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from loguru import logger
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from fast_easilogin.core.runtime_state import RuntimeState
-from fast_easilogin.storage import load_settings
+from fast_easilogin.storage import get_db
+from fast_easilogin.storage.store import load_settings
 
 router = APIRouter(tags=["websocket"])
 
@@ -19,8 +21,7 @@ _lock = asyncio.Lock()
 _shutdown = False
 
 
-async def _broadcast_stats(state: RuntimeState) -> None:
-    """定期推统计数据"""
+async def _broadcast_stats(state: RuntimeState, db: AsyncSession) -> None:
     while not _shutdown:
         async with _lock:
             clients_snapshot = list(_clients)
@@ -30,7 +31,7 @@ async def _broadcast_stats(state: RuntimeState) -> None:
             continue
 
         try:
-            data = await _build_stats_message(state)
+            data = await _build_stats_message(state, db)
             message = json.dumps(data, ensure_ascii=False)
             disconnected: list[WebSocket] = []
             for client in clients_snapshot:
@@ -48,9 +49,9 @@ async def _broadcast_stats(state: RuntimeState) -> None:
         await asyncio.sleep(1)
 
 
-async def _build_stats_message(state: RuntimeState) -> dict[str, Any]:
+async def _build_stats_message(state: RuntimeState, db: AsyncSession) -> dict[str, Any]:
     stats = state.get_stats()
-    settings = await load_settings()
+    settings = await load_settings(db)
     return {
         "type": "stats",
         "data": {
@@ -79,8 +80,10 @@ def _build_login_trends_message(state: RuntimeState, hours: int = 24) -> dict[st
 
 
 @router.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket) -> None:
-    """WebSocket 端点"""
+async def websocket_endpoint(
+    websocket: WebSocket,
+    db: AsyncSession = Depends(get_db),
+) -> None:
     global _push_task  # noqa: PLW0603
 
     try:
@@ -96,11 +99,11 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     logger.debug("WebSocket连接, 连接数: {}", len(_clients))
 
     if _push_task is None or _push_task.done():
-        _push_task = asyncio.create_task(_broadcast_stats(state))
+        _push_task = asyncio.create_task(_broadcast_stats(state, db))
 
     try:
         try:
-            await websocket.send_text(json.dumps(await _build_stats_message(state), ensure_ascii=False))
+            await websocket.send_text(json.dumps(await _build_stats_message(state, db), ensure_ascii=False))
             await websocket.send_text(json.dumps(_build_recent_logins_message(state), ensure_ascii=False))
         except Exception:
             return

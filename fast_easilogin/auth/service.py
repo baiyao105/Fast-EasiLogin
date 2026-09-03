@@ -6,6 +6,7 @@ import secrets
 from typing import Any
 
 from loguru import logger
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from fast_easilogin.core.constants import (
     AUTH_APP_ANDROID,
@@ -19,16 +20,16 @@ from fast_easilogin.core.constants import (
 )
 from fast_easilogin.core.errors import LoginFailedError, NetworkError, RequestFailedError
 from fast_easilogin.core.services import Services
-from fast_easilogin.storage import (
-    find_user,
-    load_settings,
-    set_user_active,
-)
 from fast_easilogin.storage.models import (
     AggregatedUserInfo,
     LoginResult,
     UserIdentityInfo,
     UserInfoExtendVo,
+)
+from fast_easilogin.storage.store import (
+    find_user,
+    load_settings,
+    set_user_active,
 )
 
 _LOGIN_TASKS: dict[str, asyncio.Task[LoginResult]] = {}
@@ -36,6 +37,7 @@ _LOGIN_TASKS: dict[str, asyncio.Task[LoginResult]] = {}
 
 async def authenticate_user(
     services: Services,
+    db: AsyncSession,
     userid: str,
     password_plain: str,
     userid_for_disable: str | None = None,
@@ -44,7 +46,7 @@ async def authenticate_user(
     if existing is not None and not existing.done():
         return await existing
 
-    task = asyncio.create_task(_do_login(services, userid, password_plain, userid_for_disable))
+    task = asyncio.create_task(_do_login(services, db, userid, password_plain, userid_for_disable))
     _LOGIN_TASKS[userid] = task
     try:
         return await task
@@ -54,6 +56,7 @@ async def authenticate_user(
 
 async def _do_login(
     services: Services,
+    db: AsyncSession,
     userid: str,
     password_plain: str,
     userid_for_disable: str | None = None,
@@ -89,12 +92,12 @@ async def _do_login(
         code = data.get("statusCode") if isinstance(data, dict) else None
         msg = data.get("message") if isinstance(data, dict) else None
         logger.warning("登录失败: userid={} code={} message={}", userid, (code or "-"), str(msg or "-"))
-        cfg = await load_settings()
+        cfg = await load_settings(db)
         should_disable = (userid_for_disable is None) or cfg.global_settings.enable_password_error_disable
         if should_disable:
             target_id = userid_for_disable or userid
             try:
-                await set_user_active(target_id, False)
+                await set_user_active(db, target_id, False)
                 logger.info("因密码错误自动禁用账户: user_id={}", target_id)
             except Exception as e:
                 logger.error("自动禁用账户失败: {}", str(e))
@@ -135,14 +138,15 @@ async def fetch_user_info(services: Services, token: str) -> dict[str, Any]:
 
 async def get_user_info(
     services: Services,
+    db: AsyncSession,
     userid: str,
     password_plain: str,
     fields: list[str] | None = None,
 ) -> dict[str, Any]:
-    rec = await find_user(userid)
+    rec = await find_user(db, userid)
     phone_for_login = rec.phone if rec else userid
     login = await authenticate_user(
-        services, phone_for_login, password_plain, userid_for_disable=(rec.user_id if rec else None)
+        services, db, phone_for_login, password_plain, userid_for_disable=(rec.user_id if rec else None)
     )
     token = login.token
     info = await fetch_user_info(services, token) if token else {}

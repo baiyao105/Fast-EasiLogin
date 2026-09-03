@@ -1,19 +1,14 @@
 from __future__ import annotations
 
 import asyncio
-import threading
 
-import httpx
 from granian.constants import Interfaces
 from granian.log import LogLevels
 from granian.server.embed import Server as GranianServer
 from loguru import logger
 
 from fast_easilogin.api.main import create_app as create_api_app
-from fast_easilogin.core.runtime_state import RuntimeState
-from fast_easilogin.core.services import Services
 from fast_easilogin.dashboard.app import create_app as create_dashboard_app
-from fast_easilogin.storage import close_db, init_db, load_settings
 
 
 class ServerConfig:
@@ -25,50 +20,23 @@ class ServerConfig:
 
 
 class AppRuntime:
-    __slots__ = (
-        "_stop_event",
-        "_thread_stop",
-        "api_server",
-        "dashboard_server",
-        "services",
-    )
+    __slots__ = ("api_server", "dashboard_server")
 
     def __init__(self) -> None:
         self.api_server: GranianServer | None = None
         self.dashboard_server: GranianServer | None = None
-        self.services: Services | None = None
-        self._stop_event: asyncio.Event | None = None
-        self._thread_stop: threading.Event = threading.Event()
 
-    async def start(self, api_cfg: ServerConfig, dashboard_cfg: ServerConfig) -> None:
-        await init_db()
+    def start(self, api_cfg: ServerConfig, dashboard_cfg: ServerConfig, enable_eventlog: bool = True) -> None:
+        api_app = create_api_app()
+        dashboard_app = create_dashboard_app()
 
-        settings = await load_settings()
-
-        http_client = httpx.AsyncClient(
-            timeout=httpx.Timeout(connect=1.0, read=3.0, write=3.0, pool=10.0),
-            limits=httpx.Limits(max_keepalive_connections=100, max_connections=500),
-            http2=True,
-        )
-        state = RuntimeState()
-        self.services = Services(http=http_client, state=state)
-
-        api_app = create_api_app(self.services)
-        dashboard_app = create_dashboard_app(self.services)
-
-        if not _is_port_available(api_cfg.host, api_cfg.port):
-            raise RuntimeError(f"API 端口 {api_cfg.port} 已被占用")
-        if not _is_port_available(dashboard_cfg.host, dashboard_cfg.port):
-            raise RuntimeError(f"Dashboard 端口 {dashboard_cfg.port} 已被占用")
-
-        access_log = settings.global_settings.enable_eventlog
         self.api_server = GranianServer(
             api_app,
             address=api_cfg.host,
             port=api_cfg.port,
             interface=Interfaces.ASGI,
             log_enabled=True,
-            log_access=access_log,
+            log_access=enable_eventlog,
             log_level=LogLevels.info,
         )
         self.dashboard_server = GranianServer(
@@ -88,43 +56,16 @@ class AppRuntime:
             dashboard_cfg.port,
         )
 
-    async def run(self, stop_event: asyncio.Event | None = None) -> None:
-        self._stop_event = stop_event
-        try:
-            assert self.api_server is not None
-            assert self.dashboard_server is not None
-            await asyncio.gather(
-                self.api_server.serve(),
-                self.dashboard_server.serve(),
-            )
-        finally:
-            await self.shutdown()
+    async def run(self) -> None:
+        assert self.api_server is not None
+        assert self.dashboard_server is not None
+        await asyncio.gather(
+            self.api_server.serve(),
+            self.dashboard_server.serve(),
+        )
 
     def stop(self) -> None:
-        self._thread_stop.set()
         if self.api_server is not None:
             self.api_server.stop()
         if self.dashboard_server is not None:
             self.dashboard_server.stop()
-        if self._stop_event is not None:
-            self._stop_event.set()
-
-    async def shutdown(self) -> None:
-        if self.services is None:
-            return
-        await self.services.http.aclose()
-        self.services = None
-        await close_db()
-        logger.info("服务已停止")
-
-
-def _is_port_available(host: str, port: int) -> bool:
-    import socket
-
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        try:
-            s.bind((host, port))
-        except OSError:
-            return False
-        else:
-            return True
