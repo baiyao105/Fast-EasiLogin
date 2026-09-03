@@ -1,12 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import hashlib
-import json
-import random
 import secrets
-from typing import Any, cast
+from typing import Any
 
 from loguru import logger
 
@@ -15,19 +12,17 @@ from fast_easilogin.core.constants import (
     AUTH_REFER_ANDROID,
     CRYPTO_VERSION,
     HTTP_SERVER_ERROR,
-    LOGIN_TTL,
     LOGIN_URL,
     TOKEN_MASK_MIN_LEN,
     USER_AGENT_ANDROID,
     USER_INFO_URL,
-    USERINFO_TTL,
 )
 from fast_easilogin.core.errors import LoginFailedError, NetworkError, RequestFailedError
 from fast_easilogin.core.services import Services
 from fast_easilogin.storage import (
     find_user,
     load_settings,
-    save_users,
+    set_user_active,
 )
 from fast_easilogin.storage.models import (
     AggregatedUserInfo,
@@ -97,13 +92,11 @@ async def _do_login(
         cfg = await load_settings()
         should_disable = (userid_for_disable is None) or cfg.global_settings.enable_password_error_disable
         if should_disable:
+            target_id = userid_for_disable or userid
             try:
-                target_user = await find_user(userid_for_disable or userid)
-                if target_user and target_user.active:
-                    target_user.active = False
-                    await save_users({target_user.user_id: target_user})
-                    logger.info("因密码错误自动禁用账户: user_id={}", target_user.user_id)
-            except OSError as e:
+                await set_user_active(target_id, False)
+                logger.info("因密码错误自动禁用账户: user_id={}", target_id)
+            except Exception as e:
                 logger.error("自动禁用账户失败: {}", str(e))
 
         raise LoginFailedError
@@ -127,46 +120,17 @@ async def _do_login(
     )
 
 
-async def fetch_user_info_with_token(services: Services, token: str) -> dict[str, Any]:
-    """获取用户详情"""
-    rc = services.cache
+async def fetch_user_info(services: Services, token: str) -> dict[str, Any]:
     headers = {"X-auth-refer": AUTH_REFER_ANDROID, "X-Crypto-Version": CRYPTO_VERSION, "User-Agent": USER_AGENT_ANDROID}
     cookies = {"x-auth-app": AUTH_APP_ANDROID, "x-auth-token": token}
     try:
         resp = await services.http.get(USER_INFO_URL, headers=headers, cookies=cookies)
         data = resp.json()
-        result = data.get("data", {})
-        uid = str(result.get("uid") or "")
-        prev_raw = await rc.get(f"userinfo:last:{uid}") if uid else None
-        changed = False
-        if prev_raw:
-            try:
-                prev = json.loads(prev_raw)
-            except Exception:
-                prev = {}
-            changed = prev != result
-        if uid:
-            await rc.set(
-                f"userinfo:last:{uid}",
-                json.dumps(result, ensure_ascii=False),
-                ex=max(3600, int(USERINFO_TTL)),
-            )
-        if changed:
-            logger.success("账户信息被更新: {}", uid or "-")
-            logger.trace("请求的返回信息: {}", str(result))
+        return data.get("data", {})
     except Exception as err:
         masked = f"{token[:6]}...{token[-4:]}" if len(token) > TOKEN_MASK_MIN_LEN else token
         logger.error("账户信息请求失败: token={} err={}", masked or "-", str(err))
         return {}
-    else:
-        return cast(dict[str, Any], result)
-
-
-def select_fields(data: dict[str, Any], fields: list[str] | None) -> dict[str, Any]:
-    """按字段过滤"""
-    if not fields:
-        return data
-    return {k: data.get(k) for k in fields}
 
 
 async def get_user_info(
@@ -175,25 +139,13 @@ async def get_user_info(
     password_plain: str,
     fields: list[str] | None = None,
 ) -> dict[str, Any]:
-    """聚合用户信息"""
-    rc = services.cache
-    md5_pwd = hashlib.md5(password_plain.encode("utf-8")).hexdigest()
-    cache_key = f"{userid}:{md5_pwd}"
-    cached = await rc.get(f"agg:{cache_key}")
-    if cached:
-        try:
-            full_cached = json.loads(cached)
-            return select_fields(full_cached, fields)
-        except Exception:
-            pass
-
     rec = await find_user(userid)
     phone_for_login = rec.phone if rec else userid
-    login: LoginResult = await authenticate_user(
+    login = await authenticate_user(
         services, phone_for_login, password_plain, userid_for_disable=(rec.user_id if rec else None)
     )
     token = login.token
-    info = await fetch_user_info_with_token(services, token) if token else {}
+    info = await fetch_user_info(services, token) if token else {}
     ext = info.get("userInfoExtendVo") or {}
     identity = ext.get("userIdentityInfo") or {}
     agg = AggregatedUserInfo(
@@ -233,11 +185,7 @@ async def get_user_info(
         if ext
         else None,
     )
-    full = agg.model_dump(exclude_none=True)
-    full.pop("token", None)
-    ttl = max(30, int(random.uniform(0.8, 1.2) * min(LOGIN_TTL, USERINFO_TTL)))
-    with contextlib.suppress(Exception):
-        await rc.set(f"agg:{cache_key}", json.dumps(full, ensure_ascii=False), ex=ttl)
-    agg_with_token = dict(full)
-    agg_with_token["token"] = token
-    return select_fields(agg_with_token, fields)
+    result = agg.model_dump(exclude_none=True)
+    if fields:
+        result = {k: result.get(k) for k in fields}
+    return result

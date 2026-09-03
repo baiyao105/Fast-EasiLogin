@@ -45,13 +45,12 @@ def _table_to_record(u: UserTable) -> UserRecord:
     )
 
 
-async def load_users() -> dict[str, UserRecord]:
-    """加载所有用户"""
+async def get_user(user_id: str) -> UserRecord | None:
+    """按 user_id 获取用户"""
     session = await _get_session()
     try:
-        result = await session.execute(select(UserTable))
-        users = result.scalars().all()
-        return {u.user_id: _table_to_record(u) for u in users}
+        user = await session.get(UserTable, user_id)
+        return _table_to_record(user) if user else None
     finally:
         await session.close()
 
@@ -74,44 +73,61 @@ async def find_user(identifier: str) -> UserRecord | None:
         await session.close()
 
 
-async def save_users(users: dict[str, UserRecord], user_ids: list[str] | None = None) -> bool:
-    """保存用户 (upsert)"""
+async def get_active_users() -> list[UserRecord]:
+    """获取所有活跃用户"""
+    session = await _get_session()
+    try:
+        result = await session.execute(select(UserTable).where(col(UserTable.active) == True))  # noqa: E712
+        return [_table_to_record(u) for u in result.scalars().all()]
+    finally:
+        await session.close()
+
+
+async def get_all_users() -> list[UserRecord]:
+    """获取所有用户 (含禁用)"""
+    session = await _get_session()
+    try:
+        result = await session.execute(select(UserTable))
+        return [_table_to_record(u) for u in result.scalars().all()]
+    finally:
+        await session.close()
+
+
+async def save_user(record: UserRecord) -> bool:
+    """保存单个用户 (upsert)"""
     session = await _get_session()
     try:
         now = datetime.now(UTC)
-        ids = set(user_ids) if user_ids is not None else None
-        targets = [u for u in users.values() if ids is None or u.user_id in ids]
-        for record in targets:
-            existing = await session.get(UserTable, record.user_id)
-            if existing:
-                existing.active = record.active
-                existing.phone = record.phone
-                existing.password = record.password
-                existing.nick_name = record.nick_name
-                existing.real_name = record.real_name
-                existing.avatar_url = record.avatar_url
-                existing.pt_timestamp = record.pt_timestamp
-                existing.updated_at = now
-            else:
-                session.add(
-                    UserTable(
-                        user_id=record.user_id,
-                        active=record.active,
-                        phone=record.phone,
-                        password=record.password,
-                        nick_name=record.nick_name,
-                        real_name=record.real_name,
-                        avatar_url=record.avatar_url,
-                        pt_timestamp=record.pt_timestamp,
-                        created_at=now,
-                        updated_at=now,
-                    )
+        existing = await session.get(UserTable, record.user_id)
+        if existing:
+            existing.active = record.active
+            existing.phone = record.phone
+            existing.password = record.password
+            existing.nick_name = record.nick_name
+            existing.real_name = record.real_name
+            existing.avatar_url = record.avatar_url
+            existing.pt_timestamp = record.pt_timestamp
+            existing.updated_at = now
+        else:
+            session.add(
+                UserTable(
+                    user_id=record.user_id,
+                    active=record.active,
+                    phone=record.phone,
+                    password=record.password,
+                    nick_name=record.nick_name,
+                    real_name=record.real_name,
+                    avatar_url=record.avatar_url,
+                    pt_timestamp=record.pt_timestamp,
+                    created_at=now,
+                    updated_at=now,
                 )
+            )
         await session.commit()
         return True
     except Exception:
         await session.rollback()
-        logger.exception("保存用户失败")
+        logger.exception("保存用户失败: user_id={}", record.user_id)
         return False
     finally:
         await session.close()
@@ -140,6 +156,25 @@ async def user_exists(user_id: str) -> bool:
     session = await _get_session()
     try:
         return await session.get(UserTable, user_id) is not None
+    finally:
+        await session.close()
+
+
+async def set_user_active(user_id: str, active: bool) -> bool:
+    """设置用户启用/禁用状态"""
+    session = await _get_session()
+    try:
+        user = await session.get(UserTable, user_id)
+        if not user:
+            return False
+        user.active = active
+        user.updated_at = datetime.now(UTC)
+        await session.commit()
+        return True
+    except Exception:
+        await session.rollback()
+        logger.exception("更新用户状态失败: user_id={}", user_id)
+        return False
     finally:
         await session.close()
 
@@ -217,7 +252,6 @@ async def update_settings(update_data: dict[str, Any]) -> bool:
 
 
 async def _write_default_settings(session: AsyncSession) -> None:
-    """写默认配置"""
     now = datetime.now(UTC)
     defaults = _DEFAULT_SETTINGS.model_dump(by_alias=True)
     for field, value in defaults.get("Global", {}).items():

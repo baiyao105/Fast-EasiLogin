@@ -14,7 +14,6 @@ from fast_easilogin.core.runtime_state import RuntimeState
 from fast_easilogin.core.services import Services
 from fast_easilogin.dashboard.app import create_app as create_dashboard_app
 from fast_easilogin.storage import close_db, init_db, load_settings
-from fast_easilogin.storage.kv_cache import get_cache
 
 
 class ServerConfig:
@@ -26,8 +25,6 @@ class ServerConfig:
 
 
 class AppRuntime:
-    """统一管理两个 Granian Server 的生命周期。"""
-
     __slots__ = (
         "_stop_event",
         "_thread_stop",
@@ -54,8 +51,7 @@ class AppRuntime:
             http2=True,
         )
         state = RuntimeState()
-        cache = await get_cache()
-        self.services = Services(http=http_client, state=state, cache=cache)
+        self.services = Services(http=http_client, state=state)
 
         api_app = create_api_app(self.services)
         dashboard_app = create_dashboard_app(self.services)
@@ -93,7 +89,6 @@ class AppRuntime:
         )
 
     async def run(self, stop_event: asyncio.Event | None = None) -> None:
-        """并发运行"""
         self._stop_event = stop_event
         try:
             assert self.api_server is not None
@@ -106,7 +101,6 @@ class AppRuntime:
             await self.shutdown()
 
     def stop(self) -> None:
-        """通知 Runtime 停止"""
         self._thread_stop.set()
         if self.api_server is not None:
             self.api_server.stop()
@@ -116,11 +110,9 @@ class AppRuntime:
             self._stop_event.set()
 
     async def shutdown(self) -> None:
-        """清理共享资源"""
         if self.services is None:
             return
         await self.services.http.aclose()
-        await self.services.cache.clear()
         self.services = None
         await close_db()
         logger.info("服务已停止")

@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from loguru import logger
 
 from fast_easilogin.dashboard.models import AccountItem, AddAccountRequest, ApiResponse
-from fast_easilogin.storage import delete_user, load_users, save_users, user_exists
+from fast_easilogin.storage import delete_user, get_all_users, save_user, user_exists
 from fast_easilogin.storage.models import UserRecord
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
@@ -10,7 +10,7 @@ router = APIRouter(prefix="/accounts", tags=["accounts"])
 
 @router.get("")
 async def list_accounts():
-    users = await load_users()
+    users = await get_all_users()
     data = [
         AccountItem(
             pt_nickname=u.nick_name or "",
@@ -23,7 +23,7 @@ async def list_accounts():
             last_login=None,
             phone=u.phone or "",
         )
-        for u in users.values()
+        for u in users
     ]
     return ApiResponse(data=[item.model_dump() for item in data])
 
@@ -45,10 +45,10 @@ async def add_account(body: AddAccountRequest):
         password=password,
         nick_name=body.user_name,
         real_name="",
-        avatar_url=body.head_img,
+        avatar_url=body.avatar_url,
         pt_timestamp=None,
     )
-    await save_users({userid: record})
+    await save_user(record)
     logger.info("Dashboard 添加账户: user_id={}", userid)
     return ApiResponse(message="account_added")
 

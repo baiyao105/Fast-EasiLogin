@@ -8,14 +8,14 @@ from fast_easilogin.auth.service import (
     authenticate_user as user_login,
 )
 from fast_easilogin.auth.service import (
-    fetch_user_info_with_token,
+    fetch_user_info,
 )
 from fast_easilogin.auth.service import (
     get_user_info as get_aggregated_user_info,
 )
 from fast_easilogin.core.constants import TOKEN_OFFLINE_SUFFIX
 from fast_easilogin.core.services import Services
-from fast_easilogin.storage import find_user, load_users, save_users
+from fast_easilogin.storage import find_user, get_active_users, get_user, save_user
 from fast_easilogin.storage.models import (
     AppSaveDataBody,
     DataResponse,
@@ -29,8 +29,7 @@ router = APIRouter()
 
 
 def _get_services(request: Request) -> Services:
-    services: Services = request.app.state.services
-    return services
+    return request.app.state.services
 
 
 def ok_response(data: dict | list | None = None) -> dict:
@@ -48,11 +47,10 @@ async def _update_user_profile(
     if not acquired:
         return
     try:
-        users = await load_users()
-        rec = users.get(uid)
+        rec = await get_user(uid)
         if not rec:
             return
-        fetched = await fetch_user_info_with_token(services, token)
+        fetched = await fetch_user_info(services, token)
         if not fetched:
             return
         new_name = fetched.get("nickName") or nickname or rec.nick_name
@@ -65,17 +63,10 @@ async def _update_user_profile(
         )
         if not changed:
             return
-        users[uid] = UserRecord(
-            user_id=uid,
-            active=rec.active,
-            phone=rec.phone,
-            password=rec.password,
-            nick_name=new_name or "",
-            real_name=real_name,
-            avatar_url=new_img or "",
-            pt_timestamp=rec.pt_timestamp,
-        )
-        await save_users(users, user_ids=[uid])
+        rec.nick_name = new_name or ""
+        rec.real_name = real_name
+        rec.avatar_url = new_img or ""
+        await save_user(rec)
         logger.success(
             "账户信息被更新: usrid({}) {}", uid, {"nick_name": new_name, "real_name": real_name, "avatar_url": new_img}
         )
@@ -97,7 +88,6 @@ async def savedata():
 
 @router.post("/user/info", response_model=DataResponse)
 async def user_info(request: Request, body: UserInfoRequest):
-    """聚合用户信息"""
     services = _get_services(request)
     logger.info("聚合用户信息: user_id={} fields_count={}", body.user_id, len(body.fields or []))
     data = await get_aggregated_user_info(services, body.user_id, body.password, body.fields)
@@ -106,8 +96,7 @@ async def user_info(request: Request, body: UserInfoRequest):
 
 @router.get("/getData/SSOLOGIN", response_model=DataResponse)
 async def get_sso_list(pt_type: str | None = None):
-    """SSO接口列表"""
-    users = await load_users()
+    users = await get_active_users()
     data: list[dict[str, str]] = [
         {
             "pt_nickname": u.nick_name,
@@ -116,8 +105,7 @@ async def get_sso_list(pt_type: str | None = None):
             "pt_username": u.real_name or u.user_id,
             "pt_photourl": u.avatar_url,
         }
-        for u in users.values()
-        if u.active
+        for u in users
     ]
     return ok_response(data)
 
@@ -131,7 +119,6 @@ async def sso_login_user(  # noqa: PLR0917
     pt_type: str | None = None,
     pt_appid: str | None = None,
 ):
-    """SSO 登录"""
     services = _get_services(request)
     record = await find_user(userid)
     if record is None or not record.active:
@@ -181,42 +168,36 @@ async def sso_login_user(  # noqa: PLR0917
 
 @router.get("/getData/SSOLOGOUT", response_model=OkResponse)
 async def sso_logout(pt_type: str | None = None):
-    """SSO 登出"""
     return ok_response()
 
 
 @router.delete("/deleteData", response_model=OkResponse)
 async def delete_data():
-    """删除数据"""
     return ok_response()
 
 
 @router.post("/savedata", response_model=OkResponse)
-async def save_user(request: Request, body: SaveBody, background_tasks: BackgroundTasks):
-    """保存用户数据"""
+async def save_user_data(request: Request, body: SaveBody, background_tasks: BackgroundTasks):
     services = _get_services(request)
-    users = await load_users()
     if isinstance(body, SaveUserBody):
-        key_uid = body.userid
-        prev = users.get(body.userid) or next((r for r in users.values() if r.phone == body.userid), None)
-        if prev:
-            key_uid = prev.user_id
-        active_val = prev.active if prev else True
-        users[key_uid] = UserRecord(
+        prev = await find_user(body.userid)
+        key_uid = prev.user_id if prev else body.userid
+        record = UserRecord(
             user_id=key_uid,
-            active=active_val,
+            active=prev.active if prev else True,
             phone=body.userid,
             password=body.password,
             nick_name=body.user_name,
             real_name=(prev.real_name if prev else ""),
-            avatar_url=body.head_img,
+            avatar_url=body.avatar_url,
             pt_timestamp=(prev.pt_timestamp if prev else None),
         )
-        await save_users(users, user_ids=[key_uid])
+        await save_user(record)
         logger.info("更新用户信息: phone={} user_id={}", body.userid, key_uid)
         return ok_response()
+
     uid = body.pt_userid
-    rec = users.get(uid)
+    rec = await get_user(uid)
     if rec and rec.pt_timestamp is not None and rec.pt_timestamp > body.pt_timestamp:
         return ok_response()
     new_name = body.pt_nickname or (rec.nick_name if rec else "")
@@ -224,13 +205,11 @@ async def save_user(request: Request, body: SaveBody, background_tasks: Backgrou
     real_name = rec.real_name if rec else ""
     candidate_token = str(body.pt_token or "")
     if candidate_token and (not candidate_token.endswith(TOKEN_OFFLINE_SUFFIX)):
-        fetched_once = await fetch_user_info_with_token(services, candidate_token)
+        fetched_once = await fetch_user_info(services, candidate_token)
         real_name = fetched_once.get("realName") or real_name
-    key = uid
-    active_val = rec.active if rec else False
-    users[key] = UserRecord(
-        user_id=key,
-        active=active_val,
+    record = UserRecord(
+        user_id=uid,
+        active=rec.active if rec else False,
         phone=(body.pt_username or (rec.phone if rec else "")),
         password=(rec.password if rec else ""),
         nick_name=new_name or "",
@@ -238,7 +217,7 @@ async def save_user(request: Request, body: SaveBody, background_tasks: Backgrou
         avatar_url=new_img or "",
         pt_timestamp=body.pt_timestamp,
     )
-    await save_users(users, user_ids=[key])
+    await save_user(record)
 
     if body.pt_token and not body.pt_token.endswith(TOKEN_OFFLINE_SUFFIX):
         background_tasks.add_task(
@@ -254,6 +233,5 @@ async def save_user(request: Request, body: SaveBody, background_tasks: Backgrou
 
 
 @router.post("/saveData", response_model=OkResponse)
-async def save_data(request: Request, body: SaveBody, background_tasks: BackgroundTasks):
-    """saveData 别名"""
-    return await save_user(request, body, background_tasks)
+async def save_data_alias(request: Request, body: SaveBody, background_tasks: BackgroundTasks):
+    return await save_user_data(request, body, background_tasks)

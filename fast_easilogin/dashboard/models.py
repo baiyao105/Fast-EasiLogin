@@ -19,7 +19,7 @@ class AddAccountRequest(BaseModel):
     userid: str
     password: str
     user_name: str = ""
-    head_img: str = ""
+    avatar_url: str = ""
 
 
 class AccountItem(BaseModel):

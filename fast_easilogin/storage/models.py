@@ -3,8 +3,9 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
-from sqlmodel import SQLModel
+from pydantic import BaseModel, ConfigDict
+from pydantic import Field as PydanticField
+from sqlmodel import Field, SQLModel
 
 CURRENT_SCHEMA_VERSION = 1
 
@@ -42,7 +43,7 @@ class UserRecord(BaseModel):
     user_id: str
     active: bool = True
     phone: str = ""
-    password: str = Field(exclude=True)
+    password: str = PydanticField(exclude=True)
     nick_name: str = ""
     real_name: str | None = None
     avatar_url: str = ""
@@ -115,7 +116,7 @@ class SaveUserBody(BaseModel):
     userid: str
     password: str
     user_name: str = ""
-    head_img: str = ""
+    avatar_url: str = ""
 
 
 class AppSaveDataBody(BaseModel):
