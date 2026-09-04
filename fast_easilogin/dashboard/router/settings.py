@@ -23,7 +23,11 @@ async def update_settings_api(body: SettingsUpdate, db: AsyncSession = Depends(g
     if not update_data:
         return ApiResponse()
 
-    success = await update_settings(db, update_data)
-    if not success:
-        raise HTTPException(status_code=500, detail="settings_update_failed")
+    try:
+        await update_settings(db, update_data)
+        await db.commit()
+    except Exception as err:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="settings_update_failed") from err
+
     return ApiResponse(message="settings_updated")

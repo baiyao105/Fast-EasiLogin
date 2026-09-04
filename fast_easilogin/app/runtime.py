@@ -8,6 +8,7 @@ from granian.server.embed import Server as GranianServer
 from loguru import logger
 
 from fast_easilogin.api.main import create_app as create_api_app
+from fast_easilogin.core.shared import close_shared_resources
 from fast_easilogin.dashboard.app import create_app as create_dashboard_app
 
 
@@ -59,10 +60,13 @@ class AppRuntime:
     async def run(self) -> None:
         assert self.api_server is not None
         assert self.dashboard_server is not None
-        await asyncio.gather(
-            self.api_server.serve(),
-            self.dashboard_server.serve(),
-        )
+        try:
+            await asyncio.gather(
+                self.api_server.serve(),
+                self.dashboard_server.serve(),
+            )
+        finally:
+            await close_shared_resources()
 
     def stop(self) -> None:
         if self.api_server is not None:

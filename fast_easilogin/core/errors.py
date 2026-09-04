@@ -24,10 +24,3 @@ class RequestFailedError(Exception):
             super().__init__(f"{message} after {max_attempts} attempts: url={url}")
         else:
             super().__init__(message)
-
-
-class HttpClientNotInitializedError(Exception):
-    """HTTP 客户端未初始化"""
-
-    def __init__(self):
-        super().__init__("HttpClientManager not initialized, call init() first")

@@ -53,6 +53,7 @@ async def add_account(body: AddAccountRequest, db: AsyncSession = Depends(get_db
         pt_timestamp=None,
     )
     await save_user(db, record)
+    await db.commit()
     logger.info("Dashboard 添加账户: user_id={}", userid)
     return ApiResponse(message="account_added")
 
@@ -63,5 +64,6 @@ async def delete_account(userid: str, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="user_not_found")
 
     await delete_user(db, userid)
+    await db.commit()
     logger.info("Dashboard 删除账户: user_id={}", userid)
     return ApiResponse(message="account_deleted")

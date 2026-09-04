@@ -19,6 +19,7 @@ from fast_easilogin.auth.service import (
 from fast_easilogin.core.constants import TOKEN_OFFLINE_SUFFIX
 from fast_easilogin.core.services import Services
 from fast_easilogin.storage import get_db
+from fast_easilogin.storage.database import get_session_factory
 from fast_easilogin.storage.models import (
     AppSaveDataBody,
     DataResponse,
@@ -48,48 +49,54 @@ def ok_response(data: dict | list | None = None) -> dict:
     return r
 
 
-async def _update_user_profile(  # noqa: PLR0917
+async def _update_user_profile(
     services: Services,
-    db: AsyncSession,
     uid: str,
     token: str,
     nickname: str | None = None,
     avatar_url: str | None = None,
 ) -> None:
+    """后台任务"""
     state = services.state
     acquired = await state.acquire_inflight(uid)
     if not acquired:
         return
-    try:
-        rec = await get_user(db, uid)
-        if not rec:
-            return
-        fetched = await fetch_user_info(services, token)
-        if not fetched:
-            return
-        new_name = fetched.get("nickName") or nickname or rec.nick_name
-        new_img = fetched.get("photoUrl") or avatar_url or rec.avatar_url
-        real_name = fetched.get("realName") or rec.real_name or ""
-        changed = (
-            (new_name or "") != (rec.nick_name or "")
-            or (real_name or "") != (rec.real_name or "")
-            or (new_img or "") != (rec.avatar_url or "")
-        )
-        if not changed:
-            return
-        rec.nick_name = new_name or ""
-        rec.real_name = real_name
-        rec.avatar_url = new_img or ""
-        await save_user(db, rec)
-        logger.success(
-            "账户信息被更新: usrid({}) {}", uid, {"nick_name": new_name, "real_name": real_name, "avatar_url": new_img}
-        )
-    except asyncio.CancelledError:
-        raise
-    except Exception:
-        logger.exception("更新用户资料异常: uid={}", uid)
-    finally:
-        await state.release_inflight(uid)
+    factory = get_session_factory()
+    async with factory() as db:
+        try:
+            rec = await get_user(db, uid)
+            if not rec:
+                return
+            fetched = await fetch_user_info(services, token)
+            if not fetched:
+                return
+            new_name = fetched.get("nickName") or nickname or rec.nick_name
+            new_img = fetched.get("photoUrl") or avatar_url or rec.avatar_url
+            real_name = fetched.get("realName") or rec.real_name or ""
+            changed = (
+                (new_name or "") != (rec.nick_name or "")
+                or (real_name or "") != (rec.real_name or "")
+                or (new_img or "") != (rec.avatar_url or "")
+            )
+            if not changed:
+                return
+            rec.nick_name = new_name or ""
+            rec.real_name = real_name
+            rec.avatar_url = new_img or ""
+            await save_user(db, rec)
+            await db.commit()
+            logger.success(
+                "账户信息被更新: usrid({}) {}",
+                uid,
+                {"nick_name": new_name, "real_name": real_name, "avatar_url": new_img},
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            await db.rollback()
+            logger.exception("更新用户资料异常: uid={}", uid)
+        finally:
+            await state.release_inflight(uid)
 
 
 SaveBody = Annotated[SaveUserBody | AppSaveDataBody, "body"]
@@ -171,7 +178,6 @@ async def sso_login_user(  # noqa: PLR0917
     background_tasks.add_task(
         _update_user_profile,
         services,
-        db,
         record.user_id,
         token,
         nickname=str(token_info.nick_name or ""),
@@ -203,58 +209,63 @@ async def save_user_data(
     services: Services = Depends(_get_services),
     db: AsyncSession = Depends(get_db),
 ):
-    if isinstance(body, SaveUserBody):
-        prev = await find_user(db, body.userid)
-        key_uid = prev.user_id if prev else body.userid
+    try:
+        if isinstance(body, SaveUserBody):
+            prev = await find_user(db, body.userid)
+            key_uid = prev.user_id if prev else body.userid
+            record = UserRecord(
+                user_id=key_uid,
+                active=prev.active if prev else True,
+                phone=body.userid,
+                password=body.password,
+                nick_name=body.user_name,
+                real_name=(prev.real_name if prev else ""),
+                avatar_url=body.avatar_url,
+                pt_timestamp=(prev.pt_timestamp if prev else None),
+            )
+            await save_user(db, record)
+            await db.commit()
+            logger.info("更新用户信息: phone={} user_id={}", body.userid, key_uid)
+            return ok_response()
+
+        uid = body.pt_userid
+        rec = await get_user(db, uid)
+        if rec and rec.pt_timestamp is not None and rec.pt_timestamp > body.pt_timestamp:
+            return ok_response()
+        new_name = body.pt_nickname or (rec.nick_name if rec else "")
+        new_img = body.pt_photourl or (rec.avatar_url if rec else "")
+        real_name = rec.real_name if rec else ""
+        candidate_token = str(body.pt_token or "")
+        if candidate_token and (not candidate_token.endswith(TOKEN_OFFLINE_SUFFIX)):
+            fetched_once = await fetch_user_info(services, candidate_token)
+            real_name = fetched_once.get("realName") or real_name
         record = UserRecord(
-            user_id=key_uid,
-            active=prev.active if prev else True,
-            phone=body.userid,
-            password=body.password,
-            nick_name=body.user_name,
-            real_name=(prev.real_name if prev else ""),
-            avatar_url=body.avatar_url,
-            pt_timestamp=(prev.pt_timestamp if prev else None),
+            user_id=uid,
+            active=rec.active if rec else False,
+            phone=(body.pt_username or (rec.phone if rec else "")),
+            password=(rec.password if rec else ""),
+            nick_name=new_name or "",
+            real_name=real_name or (rec.real_name if rec else ""),
+            avatar_url=new_img or "",
+            pt_timestamp=body.pt_timestamp,
         )
         await save_user(db, record)
-        logger.info("更新用户信息: phone={} user_id={}", body.userid, key_uid)
+        await db.commit()
+
+        if body.pt_token and not body.pt_token.endswith(TOKEN_OFFLINE_SUFFIX):
+            background_tasks.add_task(
+                _update_user_profile,
+                services,
+                uid,
+                body.pt_token,
+                nickname=body.pt_nickname,
+                avatar_url=body.pt_photourl,
+            )
+
         return ok_response()
-
-    uid = body.pt_userid
-    rec = await get_user(db, uid)
-    if rec and rec.pt_timestamp is not None and rec.pt_timestamp > body.pt_timestamp:
-        return ok_response()
-    new_name = body.pt_nickname or (rec.nick_name if rec else "")
-    new_img = body.pt_photourl or (rec.avatar_url if rec else "")
-    real_name = rec.real_name if rec else ""
-    candidate_token = str(body.pt_token or "")
-    if candidate_token and (not candidate_token.endswith(TOKEN_OFFLINE_SUFFIX)):
-        fetched_once = await fetch_user_info(services, candidate_token)
-        real_name = fetched_once.get("realName") or real_name
-    record = UserRecord(
-        user_id=uid,
-        active=rec.active if rec else False,
-        phone=(body.pt_username or (rec.phone if rec else "")),
-        password=(rec.password if rec else ""),
-        nick_name=new_name or "",
-        real_name=real_name or (rec.real_name if rec else ""),
-        avatar_url=new_img or "",
-        pt_timestamp=body.pt_timestamp,
-    )
-    await save_user(db, record)
-
-    if body.pt_token and not body.pt_token.endswith(TOKEN_OFFLINE_SUFFIX):
-        background_tasks.add_task(
-            _update_user_profile,
-            services,
-            db,
-            uid,
-            body.pt_token,
-            nickname=body.pt_nickname,
-            avatar_url=body.pt_photourl,
-        )
-
-    return ok_response()
+    except Exception:
+        await db.rollback()
+        raise
 
 
 @router.post("/saveData", response_model=OkResponse)

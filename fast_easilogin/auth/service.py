@@ -98,8 +98,10 @@ async def _do_login(
             target_id = userid_for_disable or userid
             try:
                 await set_user_active(db, target_id, False)
+                await db.commit()
                 logger.info("因密码错误自动禁用账户: user_id={}", target_id)
             except Exception as e:
+                await db.rollback()
                 logger.error("自动禁用账户失败: {}", str(e))
 
         raise LoginFailedError
