@@ -20,6 +20,7 @@ from fast_easilogin.core.constants import (
 )
 from fast_easilogin.core.errors import LoginFailedError, NetworkError, RequestFailedError
 from fast_easilogin.core.services import Services
+from fast_easilogin.storage.database import get_session_factory
 from fast_easilogin.storage.models import (
     AggregatedUserInfo,
     LoginResult,
@@ -32,31 +33,31 @@ from fast_easilogin.storage.store import (
     set_user_active,
 )
 
-_LOGIN_TASKS: dict[str, asyncio.Task[LoginResult]] = {}
+_LOGIN_TASKS: dict[tuple[str, str], asyncio.Task[LoginResult]] = {}
 
 
 async def authenticate_user(
     services: Services,
-    db: AsyncSession,
     userid: str,
     password_plain: str,
     userid_for_disable: str | None = None,
 ) -> LoginResult:
-    existing = _LOGIN_TASKS.get(userid)
+    task_key = (userid, hashlib.sha256(password_plain.encode("utf-8")).hexdigest())
+    existing = _LOGIN_TASKS.get(task_key)
     if existing is not None and not existing.done():
-        return await existing
+        return await asyncio.shield(existing)
 
-    task = asyncio.create_task(_do_login(services, db, userid, password_plain, userid_for_disable))
-    _LOGIN_TASKS[userid] = task
+    task = asyncio.create_task(_do_login(services, userid, password_plain, userid_for_disable))
+    _LOGIN_TASKS[task_key] = task
     try:
-        return await task
+        return await asyncio.shield(task)
     finally:
-        _LOGIN_TASKS.pop(userid, None)
+        if _LOGIN_TASKS.get(task_key) is task:
+            _LOGIN_TASKS.pop(task_key, None)
 
 
 async def _do_login(
     services: Services,
-    db: AsyncSession,
     userid: str,
     password_plain: str,
     userid_for_disable: str | None = None,
@@ -92,16 +93,18 @@ async def _do_login(
         code = data.get("statusCode") if isinstance(data, dict) else None
         msg = data.get("message") if isinstance(data, dict) else None
         logger.warning("登录失败: userid={} code={} message={}", userid, (code or "-"), str(msg or "-"))
-        cfg = await load_settings(db)
+        factory = get_session_factory()
+        async with factory() as db:
+            cfg = await load_settings(db)
         should_disable = (userid_for_disable is None) or cfg.global_settings.enable_password_error_disable
         if should_disable:
             target_id = userid_for_disable or userid
             try:
-                await set_user_active(db, target_id, False)
-                await db.commit()
+                async with factory() as db:
+                    await set_user_active(db, target_id, False)
+                    await db.commit()
                 logger.info("因密码错误自动禁用账户: user_id={}", target_id)
             except Exception as e:
-                await db.rollback()
                 logger.error("自动禁用账户失败: {}", str(e))
 
         raise LoginFailedError
@@ -146,9 +149,9 @@ async def get_user_info(
     fields: list[str] | None = None,
 ) -> dict[str, Any]:
     rec = await find_user(db, userid)
-    phone_for_login = rec.phone if rec else userid
+    phone_for_login = (rec.phone or userid) if rec else userid
     login = await authenticate_user(
-        services, db, phone_for_login, password_plain, userid_for_disable=(rec.user_id if rec else None)
+        services, phone_for_login, password_plain, userid_for_disable=(rec.user_id if rec else None)
     )
     token = login.token
     info = await fetch_user_info(services, token) if token else {}

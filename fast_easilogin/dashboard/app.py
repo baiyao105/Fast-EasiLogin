@@ -9,12 +9,13 @@ from starlette.staticfiles import StaticFiles
 
 from fast_easilogin.core.constants import ALLOWED_ORIGINS
 from fast_easilogin.core.lifespan import lifespan
+from fast_easilogin.core.services import Services
 from fast_easilogin.dashboard.router import api_router, ws_router
 
 _STATIC_DIR = Path(__file__).resolve().parent.parent / "assets" / "static"
 
 
-def create_app() -> FastAPI:
+def create_app(services: Services | None = None) -> FastAPI:
     app = FastAPI(
         title="EasiLogin Dashboard",
         description="EasiLogin",
@@ -24,6 +25,8 @@ def create_app() -> FastAPI:
         openapi_url="/openapi.json",
         lifespan=lifespan,
     )
+    if services is not None:
+        app.state.services = services
 
     app.add_middleware(
         CORSMiddleware,

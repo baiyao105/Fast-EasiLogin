@@ -28,6 +28,7 @@ def run(argv: list[str] | None = None) -> None:
             klass="AppService",
             display_name="Seewo FastLogin Service",
             description="Seewo FastLogin background service",
+            service_args=[arg for arg in argv if arg != "--install-by-service"],
         )
         WindowsServiceManager.set_autostart("SeewoFastLoginService", True)
         WindowsServiceManager.start("SeewoFastLoginService")
@@ -52,26 +53,24 @@ def run(argv: list[str] | None = None) -> None:
 
     api_port = settings.global_settings.port
     dashboard_port = settings.global_settings.webui_port
-    check_ports(api_port, dashboard_port)
+    check_ports(api_port, None if mode.only_service else dashboard_port)
 
     api_cfg = ServerConfig(host="0.0.0.0", port=api_port)
-    dashboard_cfg = ServerConfig(host="127.0.0.1", port=dashboard_port)
+    dashboard_cfg = None if mode.only_service else ServerConfig(host="127.0.0.1", port=dashboard_port)
 
-    runtime = AppRuntime()
-    runtime.start(api_cfg, dashboard_cfg, enable_eventlog)
+    async def _serve() -> None:
+        runtime = AppRuntime()
+        await runtime.start(api_cfg, dashboard_cfg, enable_eventlog)
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+        loop = asyncio.get_running_loop()
 
-    def _shutdown_handler():
-        logger.info("应用关闭...")
-        runtime.stop()
+        def _shutdown_handler() -> None:
+            logger.info("应用关闭...")
+            runtime.stop()
 
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        with contextlib.suppress(NotImplementedError):
-            loop.add_signal_handler(sig, _shutdown_handler)
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            with contextlib.suppress(NotImplementedError):
+                loop.add_signal_handler(sig, _shutdown_handler)
+        await runtime.run()
 
-    try:
-        loop.run_until_complete(runtime.run())
-    finally:
-        loop.close()
+    asyncio.run(_serve())

@@ -5,33 +5,33 @@ import json
 import time as _time
 from typing import Any
 
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from loguru import logger
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from fast_easilogin.core.runtime_state import RuntimeState
-from fast_easilogin.storage import get_db
-from fast_easilogin.storage.store import load_settings
 
 router = APIRouter(tags=["websocket"])
 
 _clients: set[WebSocket] = set()
 _push_task: asyncio.Task | None = None
 _lock = asyncio.Lock()
-_shutdown = False
+_shutdown_event: asyncio.Event | None = None
 
 
-async def _broadcast_stats(state: RuntimeState, db: AsyncSession) -> None:
-    while not _shutdown:
+async def _broadcast_stats(state: RuntimeState, listen_port: int) -> None:
+    global _shutdown_event  # noqa: PLW0603
+    if _shutdown_event is None:
+        _shutdown_event = asyncio.Event()
+    while not _shutdown_event.is_set():
         async with _lock:
             clients_snapshot = list(_clients)
 
         if not clients_snapshot:
-            await asyncio.sleep(1)
+            _shutdown_event.set()
             continue
 
         try:
-            data = await _build_stats_message(state, db)
+            data = _build_stats_message(state, listen_port)
             message = json.dumps(data, ensure_ascii=False)
             disconnected: list[WebSocket] = []
             for client in clients_snapshot:
@@ -49,15 +49,14 @@ async def _broadcast_stats(state: RuntimeState, db: AsyncSession) -> None:
         await asyncio.sleep(1)
 
 
-async def _build_stats_message(state: RuntimeState, db: AsyncSession) -> dict[str, Any]:
+def _build_stats_message(state: RuntimeState, listen_port: int) -> dict[str, Any]:
     stats = state.get_stats()
-    settings = await load_settings(db)
     return {
         "type": "stats",
         "data": {
             "service_status": "running",
             "uptime_seconds": int(_time.time() - stats["start_time"]),
-            "listen_port": settings.global_settings.port,
+            "listen_port": listen_port,
             "total_logins": stats["total_logins"],
             "success_logins": stats["success_logins"],
             "failed_logins": stats["failed_logins"],
@@ -82,9 +81,8 @@ def _build_login_trends_message(state: RuntimeState, hours: int = 24) -> dict[st
 @router.websocket("/ws")
 async def websocket_endpoint(
     websocket: WebSocket,
-    db: AsyncSession = Depends(get_db),
 ) -> None:
-    global _push_task  # noqa: PLW0603
+    global _push_task, _shutdown_event  # noqa: PLW0603
 
     try:
         await websocket.accept()
@@ -92,18 +90,21 @@ async def websocket_endpoint(
         return
 
     state: RuntimeState = websocket.app.state.services.state
+    listen_port = websocket.app.state.services.listen_port
 
     async with _lock:
+        if _shutdown_event is None or _shutdown_event.is_set():
+            _shutdown_event = asyncio.Event()
         _clients.add(websocket)
 
     logger.debug("WebSocket连接, 连接数: {}", len(_clients))
 
     if _push_task is None or _push_task.done():
-        _push_task = asyncio.create_task(_broadcast_stats(state, db))
+        _push_task = asyncio.create_task(_broadcast_stats(state, listen_port))
 
     try:
         try:
-            await websocket.send_text(json.dumps(await _build_stats_message(state, db), ensure_ascii=False))
+            await websocket.send_text(json.dumps(_build_stats_message(state, listen_port), ensure_ascii=False))
             await websocket.send_text(json.dumps(_build_recent_logins_message(state), ensure_ascii=False))
         except Exception:
             return
@@ -133,4 +134,6 @@ async def websocket_endpoint(
     finally:
         async with _lock:
             _clients.discard(websocket)
+            if not _clients and _shutdown_event is not None:
+                _shutdown_event.set()
         logger.debug("WebSocket断开, 连接数: {}", len(_clients))

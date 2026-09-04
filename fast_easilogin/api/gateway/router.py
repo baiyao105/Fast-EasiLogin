@@ -151,7 +151,7 @@ async def sso_login_user(  # noqa: PLR0917
         raise HTTPException(status_code=404, detail={"message": "user_not_found", "statusCode": "404"})
     login_account = record.phone or userid
     try:
-        token_info = await user_login(services, db, login_account, record.password, userid_for_disable=record.user_id)
+        token_info = await user_login(services, login_account, record.password, userid_for_disable=record.user_id)
     except Exception:
         services.state.record_login(
             username=record.nick_name or userid,

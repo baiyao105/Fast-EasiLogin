@@ -9,10 +9,13 @@ from fast_easilogin.api.gateway.router import router
 from fast_easilogin.core.constants import ALLOWED_ORIGINS
 from fast_easilogin.core.errors import LoginFailedError, NetworkError
 from fast_easilogin.core.lifespan import lifespan
+from fast_easilogin.core.services import Services
 
 
-def create_app() -> FastAPI:
+def create_app(services: Services | None = None) -> FastAPI:
     app = FastAPI(title="FastLogin", lifespan=lifespan)
+    if services is not None:
+        app.state.services = services
 
     @app.exception_handler(LoginFailedError)
     async def login_failed_handler(request: Request, exc: LoginFailedError):

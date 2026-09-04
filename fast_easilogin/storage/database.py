@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 
@@ -22,9 +23,18 @@ def get_engine() -> AsyncEngine:
     _engine = create_async_engine(
         ASYNC_SQLITE_URL,
         echo=False,
-        connect_args={"check_same_thread": False},
+        connect_args={"check_same_thread": False, "timeout": 30},
     )
+    event.listen(_engine.sync_engine, "connect", _configure_sqlite)
     return _engine
+
+
+def _configure_sqlite(dbapi_connection, connection_record) -> None:
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA busy_timeout=30000")
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
 
 
 def get_session_factory() -> async_sessionmaker[AsyncSession]:
@@ -41,8 +51,14 @@ async def get_db() -> AsyncGenerator[AsyncSession]:
     session = factory()
     try:
         yield session
+    except BaseException:
+        await session.rollback()
+        raise
     finally:
         await session.close()
+
+
+__all__ = ("DB_FILE", "close_db", "get_db", "get_engine", "get_session_factory", "init_db")
 
 
 async def init_db() -> None:

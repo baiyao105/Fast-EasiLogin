@@ -17,7 +17,7 @@ class UserTable(SQLModel, table=True):
 
     user_id: str = Field(primary_key=True, max_length=128)
     active: bool = Field(default=True, index=True)
-    phone: str = Field(default="", max_length=32, index=True)
+    phone: str | None = Field(default=None, max_length=32, index=True, unique=True)
     password: str = Field(default="")
     nick_name: str = Field(default="", max_length=128)
     real_name: str | None = Field(default=None, max_length=128)
@@ -28,12 +28,18 @@ class UserTable(SQLModel, table=True):
 
 
 class SettingTable(SQLModel, table=True):
-    """配置表 (KV 结构)"""
+    """应用设置表"""
 
     __tablename__ = "settings"
 
-    key: str = Field(primary_key=True, max_length=128)
-    value: str = Field(default="")
+    id: int = Field(default=1, primary_key=True)
+    port: int = Field(default=24300)
+    webui_port: int = Field(default=3000)
+    enable_eventlog: bool = Field(default=True)
+    auto_restart_on_crash: bool = Field(default=True)
+    restart_delay_seconds: int = Field(default=3)
+    cache_max_entries: int = Field(default=512)
+    enable_password_error_disable: bool = Field(default=False)
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -42,7 +48,7 @@ class UserRecord(BaseModel):
 
     user_id: str
     active: bool = True
-    phone: str = ""
+    phone: str | None = None
     password: str = PydanticField(exclude=True)
     nick_name: str = ""
     real_name: str | None = None

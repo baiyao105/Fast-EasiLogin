@@ -45,6 +45,7 @@ class WindowsServiceManager:
         display_name: str | None = None,
         description: str | None = None,
         start_type: int = win32service.SERVICE_AUTO_START,
+        service_args: list[str] | None = None,
     ) -> None:
         """安装服务"""
         svc_cls = f"{module}.{klass}"
@@ -54,6 +55,7 @@ class WindowsServiceManager:
             displayName=display_name or service_name,
             startType=start_type,
             description=description or "",
+            exeArgs=" ".join(service_args or []),
         )
 
     @staticmethod

@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import contextlib
-import json
 from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import or_
+from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col, select
 
@@ -59,33 +58,35 @@ async def get_all_users(db: AsyncSession) -> list[UserRecord]:
 
 
 async def save_user(db: AsyncSession, record: UserRecord) -> None:
-    """保存"""
+    """使用数据库冲突处理保存用户"""
     now = datetime.now(UTC)
-    existing = await db.get(UserTable, record.user_id)
-    if existing:
-        existing.active = record.active
-        existing.phone = record.phone
-        existing.password = record.password
-        existing.nick_name = record.nick_name
-        existing.real_name = record.real_name
-        existing.avatar_url = record.avatar_url
-        existing.pt_timestamp = record.pt_timestamp
-        existing.updated_at = now
-    else:
-        db.add(
-            UserTable(
-                user_id=record.user_id,
-                active=record.active,
-                phone=record.phone,
-                password=record.password,
-                nick_name=record.nick_name,
-                real_name=record.real_name,
-                avatar_url=record.avatar_url,
-                pt_timestamp=record.pt_timestamp,
-                created_at=now,
-                updated_at=now,
-            )
-        )
+    values = {
+        "user_id": record.user_id,
+        "active": record.active,
+        "phone": record.phone or None,
+        "password": record.password,
+        "nick_name": record.nick_name,
+        "real_name": record.real_name,
+        "avatar_url": record.avatar_url,
+        "pt_timestamp": record.pt_timestamp,
+        "created_at": now,
+        "updated_at": now,
+    }
+    statement = insert(UserTable).values(**values)
+    statement = statement.on_conflict_do_update(
+        index_elements=[UserTable.user_id],
+        set_={
+            "active": statement.excluded.active,
+            "phone": statement.excluded.phone,
+            "password": statement.excluded.password,
+            "nick_name": statement.excluded.nick_name,
+            "real_name": statement.excluded.real_name,
+            "avatar_url": statement.excluded.avatar_url,
+            "pt_timestamp": statement.excluded.pt_timestamp,
+            "updated_at": now,
+        },
+    )
+    await db.execute(statement)
 
 
 async def delete_user(db: AsyncSession, user_id: str) -> bool:
@@ -110,47 +111,44 @@ async def set_user_active(db: AsyncSession, user_id: str, active: bool) -> bool:
     return True
 
 
-_DEFAULT_SETTINGS = AppSettings()
-
-
 async def load_settings(db: AsyncSession) -> AppSettings:
     """加载配置"""
-    result = await db.execute(select(SettingTable))
-    rows = result.scalars().all()
-    kv = {r.key: r.value for r in rows}
+    row = await db.get(SettingTable, 1)
+    if row is None:
+        row = SettingTable()
 
-    if not kv:
-        await _write_default_settings(db)
-        return _DEFAULT_SETTINGS
-
-    global_data: dict[str, Any] = {}
-    for k, v in kv.items():
-        if k.startswith("global."):
-            field = k.removeprefix("global.")
-            with contextlib.suppress(json.JSONDecodeError):
-                global_data[field] = json.loads(v)
-
-    settings_dict = _DEFAULT_SETTINGS.model_dump(by_alias=True)
-    if global_data:
-        settings_dict["Global"].update(global_data)
-
-    return AppSettings.model_validate(settings_dict)
+    return AppSettings.model_validate(
+        {
+            "Global": {
+                "port": row.port,
+                "webui_port": row.webui_port,
+                "enable_eventlog": row.enable_eventlog,
+                "auto_restart_on_crash": row.auto_restart_on_crash,
+                "restart_delay_seconds": row.restart_delay_seconds,
+                "cache_max_entries": row.cache_max_entries,
+                "enable_password_error_disable": row.enable_password_error_disable,
+            }
+        }
+    )
 
 
 async def save_settings(db: AsyncSession, settings: AppSettings) -> None:
     """保存配置"""
     now = datetime.now(UTC)
-    data = settings.model_dump(by_alias=True)
-    global_data = data.get("Global", {})
+    global_data = settings.global_settings
+    row = await db.get(SettingTable, 1)
+    if row is None:
+        row = SettingTable()
+        db.add(row)
 
-    for field, value in global_data.items():
-        key = f"global.{field}"
-        existing = await db.get(SettingTable, key)
-        if existing:
-            existing.value = json.dumps(value)
-            existing.updated_at = now
-        else:
-            db.add(SettingTable(key=key, value=json.dumps(value), updated_at=now))
+    row.port = global_data.port
+    row.webui_port = global_data.webui_port
+    row.enable_eventlog = global_data.enable_eventlog
+    row.auto_restart_on_crash = global_data.auto_restart_on_crash
+    row.restart_delay_seconds = global_data.restart_delay_seconds
+    row.cache_max_entries = global_data.cache_max_entries
+    row.enable_password_error_disable = global_data.enable_password_error_disable
+    row.updated_at = now
 
 
 async def update_settings(db: AsyncSession, update_data: dict[str, Any]) -> None:
@@ -163,10 +161,3 @@ async def update_settings(db: AsyncSession, update_data: dict[str, Any]) -> None
 
     updated = AppSettings.model_validate(current_dict)
     await save_settings(db, updated)
-
-
-async def _write_default_settings(db: AsyncSession) -> None:
-    now = datetime.now(UTC)
-    defaults = _DEFAULT_SETTINGS.model_dump(by_alias=True)
-    for field, value in defaults.get("Global", {}).items():
-        db.add(SettingTable(key=f"global.{field}", value=json.dumps(value), updated_at=now))
