@@ -48,8 +48,8 @@ class AppRuntime:
             log_level=LogLevels.info,
         )
 
-        logger.success(
-            "服务启动成功: api=http://{}:{} dashboard=http://{}:{}",
+        logger.debug(
+            "服务启动: api=http://{}:{} dashboard=http://{}:{}",
             api_cfg.host,
             api_cfg.port,
             dashboard_cfg.host,

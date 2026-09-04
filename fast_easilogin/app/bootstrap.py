@@ -7,7 +7,7 @@ from fast_easilogin.core.constants import APP_NAME
 
 def bootstrap(log_level: str = "INFO") -> None:
     """初始化"""
-    logger.info("Initializing {}...", APP_NAME)
+    logger.info("初始化 {}...", APP_NAME)
     setup_logging(log_level)
     ensure_data_dirs()
-    logger.success("Bootstrap completed")
+    logger.success("初始化完成")

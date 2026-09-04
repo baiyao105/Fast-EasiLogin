@@ -1,39 +1,14 @@
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
-
-import httpx
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
-from loguru import logger
 
 from fast_easilogin.api.gateway.router import router
 from fast_easilogin.core.constants import ALLOWED_ORIGINS
 from fast_easilogin.core.errors import LoginFailedError, NetworkError
-from fast_easilogin.core.runtime_state import RuntimeState
-from fast_easilogin.core.services import Services
-from fast_easilogin.storage import close_db, init_db
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    await init_db()
-
-    http_client = httpx.AsyncClient(
-        timeout=httpx.Timeout(connect=1.0, read=3.0, write=3.0, pool=10.0),
-        limits=httpx.Limits(max_keepalive_connections=100, max_connections=500),
-        http2=True,
-    )
-    state = RuntimeState()
-    app.state.services = Services(http=http_client, state=state)
-
-    yield
-
-    await http_client.aclose()
-    await close_db()
-    logger.info("应用停止")
+from fast_easilogin.core.lifespan import lifespan
 
 
 def create_app() -> FastAPI:

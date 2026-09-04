@@ -20,8 +20,7 @@ if sys.platform == "win32":
     from fast_easilogin.app.runtime import AppRuntime, ServerConfig
     from fast_easilogin.app.utils import install_global_handlers, setup_win_eventlog
     from fast_easilogin.core.service_manager import WindowsServiceBase
-    from fast_easilogin.storage import load_settings
-    from fast_easilogin.storage.database import get_db, init_db
+    from fast_easilogin.core.startup import check_ports, load_app_settings_sync
 
     _runtime: AppRuntime | None = None
     _runtime_lock = threading.Lock()
@@ -41,21 +40,18 @@ if sys.platform == "win32":
         def SvcDoRun(self):
             bootstrap(log_level="INFO")
 
-            async def _init():
-                await init_db()
-                async for db in get_db():
-                    return await load_settings(db)
-                return None
-
-            settings = asyncio.run(_init())
+            settings = load_app_settings_sync()
             if settings is None:
                 raise RuntimeError("无法加载配置")
 
             enable_eventlog = settings.global_settings.enable_eventlog
             report_event = setup_win_eventlog(enable_eventlog)
             install_global_handlers(report_event)
-            api_cfg = ServerConfig(host="0.0.0.0", port=settings.global_settings.port)
-            dashboard_cfg = ServerConfig(host="127.0.0.1", port=settings.global_settings.webui_port)
+            api_port = settings.global_settings.port
+            dashboard_port = settings.global_settings.webui_port
+            check_ports(api_port, dashboard_port)
+            api_cfg = ServerConfig(host="0.0.0.0", port=api_port)
+            dashboard_cfg = ServerConfig(host="127.0.0.1", port=dashboard_port)
 
             global _runtime  # noqa: PLW0603
             runtime = AppRuntime()
