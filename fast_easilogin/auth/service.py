@@ -27,6 +27,8 @@ from fast_easilogin.storage.models import (
     UserIdentityInfo,
     UserInfoExtendVo,
 )
+from fast_easilogin.storage.repositories.accounts import load_credentials
+from fast_easilogin.storage.repositories.login_events import record_login_event
 from fast_easilogin.storage.store import (
     find_user,
     load_settings,
@@ -36,13 +38,41 @@ from fast_easilogin.storage.store import (
 _LOGIN_TASKS: dict[tuple[str, str], asyncio.Task[LoginResult]] = {}
 
 
+async def _record_event(
+    services: Services,
+    *,
+    username: str,
+    status: str,
+    user_id: str | None = None,
+    error_code: str | None = None,
+) -> None:
+    if services.db_factory is None:
+        return
+    try:
+        async with services.db_factory() as db:
+            await record_login_event(
+                db,
+                username=username,
+                status=status,
+                user_id=user_id,
+                error_code=error_code,
+            )
+            await db.commit()
+        await services.event_bus.publish(
+            "login.event",
+            {"username": username, "user_id": user_id, "status": status, "error_code": error_code},
+        )
+    except Exception as err:
+        logger.warning("保存登录事件失败: {}", err)
+
+
 async def authenticate_user(
     services: Services,
     userid: str,
-    password_plain: str,
+    password_plain: str | None = None,
     userid_for_disable: str | None = None,
 ) -> LoginResult:
-    task_key = (userid, hashlib.sha256(password_plain.encode("utf-8")).hexdigest())
+    task_key = (userid, hashlib.sha256((password_plain or "").encode("utf-8")).hexdigest())
     existing = _LOGIN_TASKS.get(task_key)
     if existing is not None and not existing.done():
         return await asyncio.shield(existing)
@@ -59,9 +89,26 @@ async def authenticate_user(
 async def _do_login(
     services: Services,
     userid: str,
-    password_plain: str,
+    password_plain: str | None,
     userid_for_disable: str | None = None,
 ) -> LoginResult:
+    if not password_plain:
+        factory = get_session_factory()
+        async with factory() as db:
+            if services.encryptor is None:
+                raise NetworkError("凭据加密器未初始化")
+            credentials = await load_credentials(db, userid_for_disable or userid, services.encryptor)
+            if credentials is None:
+                await _record_event(
+                    services,
+                    username=userid,
+                    user_id=userid_for_disable,
+                    status="invalid_credentials",
+                    error_code="credentials_not_found",
+                )
+                raise LoginFailedError("未找到用户凭据")
+            password_plain = credentials.password
+            userid = credentials.account
     md5_pwd = hashlib.md5(password_plain.encode("utf-8")).hexdigest()
     payload = {
         "username": userid,
@@ -82,11 +129,13 @@ async def _do_login(
         token = data.get("data", {}).get("token")
     except RequestFailedError as err:
         logger.error("login请求失败: userid={} err={}", userid, err)
+        await _record_event(services, username=userid, status="upstream", error_code="request_failed")
         raise NetworkError from err
     except (asyncio.CancelledError, KeyboardInterrupt):
         raise
     except Exception as err:
         logger.error("获取token异常: userid={} err={}", userid, err)
+        await _record_event(services, username=userid, status="system", error_code="request_error")
         raise NetworkError from err
 
     if not token:
@@ -107,10 +156,17 @@ async def _do_login(
             except Exception as e:
                 logger.error("自动禁用账户失败: {}", str(e))
 
+        await _record_event(
+            services,
+            username=userid,
+            user_id=userid_for_disable,
+            status="disabled" if should_disable else "invalid_credentials",
+            error_code=str(code or "invalid_credentials"),
+        )
         raise LoginFailedError
 
     u = data.get("data", {}).get("user", {})
-    return LoginResult(
+    result = LoginResult(
         token=token,
         avatar_url=u.get("photoUrl") or "",
         phone=u.get("phone") or userid,
@@ -126,6 +182,8 @@ async def _do_login(
         city_id=u.get("cityId"),
         raw=data,
     )
+    await _record_event(services, username=userid, user_id=result.user_id, status="success")
+    return result
 
 
 async def fetch_user_info(services: Services, token: str) -> dict[str, Any]:

@@ -9,12 +9,14 @@ from granian.server.embed import Server as GranianServer
 from loguru import logger
 
 from fast_easilogin.api.main import create_app as create_api_app
+from fast_easilogin.core.event_bus import EventBus
 from fast_easilogin.core.runtime_state import RuntimeState
 from fast_easilogin.core.services import Services
 from fast_easilogin.dashboard.app import create_app as create_dashboard_app
 from fast_easilogin.storage import close_db, init_db
 from fast_easilogin.storage.database import get_session_factory
-from fast_easilogin.storage.models import SettingTable
+from fast_easilogin.storage.encryption.factory import create_encryptor
+from fast_easilogin.storage.store import initialize_settings
 
 
 class ServerConfig:
@@ -26,7 +28,7 @@ class ServerConfig:
 
 
 class AppRuntime:
-    __slots__ = ("_stopped", "api_server", "dashboard_server", "services")
+    __slots__ = ("_maintenance_task", "_stopped", "api_server", "dashboard_server", "services")
 
     def __init__(self) -> None:
         self.api_server: GranianServer | None = None
@@ -43,15 +45,25 @@ class AppRuntime:
         try:
             await init_db()
             async with get_session_factory()() as db:
-                if await db.get(SettingTable, 1) is None:
-                    db.add(SettingTable())
-                    await db.commit()
+                settings = await initialize_settings(db)
+                await db.commit()
             http_client = httpx.AsyncClient(
                 timeout=httpx.Timeout(connect=1.0, read=3.0, write=3.0, pool=10.0),
                 limits=httpx.Limits(max_keepalive_connections=100, max_connections=500),
                 http2=True,
             )
-            self.services = Services(http=http_client, state=RuntimeState(), listen_port=api_cfg.port)
+            self.services = Services(
+                http=http_client,
+                state=RuntimeState(),
+                listen_port=api_cfg.port,
+                dashboard_host=dashboard_cfg.host if dashboard_cfg is not None else "127.0.0.1",
+                encryptor=create_encryptor(
+                    settings.global_settings.encryption_key_source, settings.global_settings.encryption_key_version
+                ),
+                event_bus=EventBus(),
+                db_factory=get_session_factory(),
+                runtime_controller=self,
+            )
             api_app = create_api_app(self.services)
             dashboard_app = create_dashboard_app(self.services) if dashboard_cfg is not None else None
 
@@ -75,6 +87,7 @@ class AppRuntime:
                 )
         except BaseException:
             if self.services is not None:
+                await self.services.event_bus.close()
                 await self.services.http.aclose()
                 self.services = None
             await close_db()
@@ -111,6 +124,7 @@ class AppRuntime:
             self.stop()
             await asyncio.gather(*tasks, return_exceptions=True)
             if self.services is not None:
+                await self.services.event_bus.close()
                 await self.services.http.aclose()
                 self.services = None
             await close_db()
@@ -123,3 +137,10 @@ class AppRuntime:
             self.api_server.stop()
         if self.dashboard_server is not None:
             self.dashboard_server.stop()
+
+    def restart(self) -> None:
+        """supervisor管理重启"""
+        self.stop()
+
+    def status(self) -> str:
+        return "stopped" if self._stopped else "running"

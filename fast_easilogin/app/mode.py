@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 
 @dataclass
-class RunMode:
+class LaunchOptions:
     only_service: bool
     log_level: str
     access_log: bool
@@ -36,11 +36,14 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def parse_mode(argv: list[str] | None = None) -> RunMode:
+def parse_mode(argv: list[str] | None = None) -> LaunchOptions:
     args = build_parser().parse_args(argv)
-    return RunMode(
+    return LaunchOptions(
         only_service=args.only_service,
         log_level=args.log_level.upper(),
         access_log=args.access_log,
         no_browser=args.no_browser,
     )
+
+
+RunMode = LaunchOptions

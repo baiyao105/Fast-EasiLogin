@@ -1,10 +1,12 @@
 {
-  "extends": "astro/tsconfigs/strict",
   "compilerOptions": {
-    "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["./src/*"]
     },
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["node"],
     "jsx": "react-jsx",
     "jsxImportSource": "react",
     "strict": true,
@@ -13,5 +15,6 @@
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src/**/*", "astro.config.mjs"]
+  "include": ["./src/**/*", "./vite.config.ts"],
+  "exclude": ["./src/lib/api/generated/**/*"]
 }

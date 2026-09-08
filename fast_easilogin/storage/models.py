@@ -18,12 +18,27 @@ class UserTable(SQLModel, table=True):
     user_id: str = Field(primary_key=True, max_length=128)
     active: bool = Field(default=True, index=True)
     phone: str | None = Field(default=None, max_length=32, index=True, unique=True)
-    password: str = Field(default="")
     nick_name: str = Field(default="", max_length=128)
     real_name: str | None = Field(default=None, max_length=128)
     avatar_url: str = Field(default="")
     pt_timestamp: int | None = Field(default=None)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    last_login_at: datetime | None = None
+
+
+class UserCredentialTable(SQLModel, table=True):
+    """上游加密凭证"""
+
+    __tablename__ = "user_credentials"
+
+    user_id: str = Field(primary_key=True, foreign_key="users.user_id")
+    account_ciphertext: bytes
+    account_nonce: bytes
+    password_ciphertext: bytes
+    password_nonce: bytes
+    encryption_algorithm: str
+    encryption_key_version: int
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -35,12 +50,49 @@ class SettingTable(SQLModel, table=True):
     id: int = Field(default=1, primary_key=True)
     port: int = Field(default=24300)
     webui_port: int = Field(default=3000)
+    dashboard_host: str = Field(default="127.0.0.1", max_length=255)
     enable_eventlog: bool = Field(default=True)
     auto_restart_on_crash: bool = Field(default=True)
     restart_delay_seconds: int = Field(default=3)
     cache_max_entries: int = Field(default=512)
     enable_password_error_disable: bool = Field(default=False)
+    dashboard_password_required: bool = Field(default=False)
+    session_ttl_seconds: int = Field(default=86400)
+    encryption_key_source: str = Field(default="environment", max_length=32)
+    encryption_key_version: int = Field(default=1)
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class DashboardSessionTable(SQLModel, table=True):
+    __tablename__ = "dashboard_sessions"
+
+    id: str = Field(primary_key=True, max_length=128)
+    created_at: datetime
+    expires_at: datetime
+    last_seen_at: datetime
+    remote_address: str | None = None
+
+
+class DashboardCredentialTable(SQLModel, table=True):
+    __tablename__ = "dashboard_credentials"
+
+    id: int = Field(default=1, primary_key=True)
+    password_hash: str
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class LoginEventTable(SQLModel, table=True):
+    """上游登录记录"""
+
+    __tablename__ = "login_events"
+
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: str | None = Field(default=None, index=True, max_length=128)
+    username: str = Field(default="", index=True, max_length=128)
+    status: str = Field(index=True, max_length=32)
+    error_code: str | None = Field(default=None, index=True, max_length=128)
+    ip_address: str = Field(default="", max_length=64)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC), index=True)
 
 
 class UserRecord(BaseModel):
@@ -167,11 +219,16 @@ class GlobalSettings(BaseModel):
 
     port: int = 24300
     webui_port: int = 3000
+    dashboard_host: str = "127.0.0.1"
     enable_eventlog: bool = True
     auto_restart_on_crash: bool = True
     restart_delay_seconds: int = 3
     cache_max_entries: int = 512
     enable_password_error_disable: bool = False
+    dashboard_password_required: bool = False
+    session_ttl_seconds: int = 86400
+    encryption_key_source: Literal["environment", "dpapi"] = "environment"
+    encryption_key_version: int = 1
 
 
 class AppSettings(BaseModel):
@@ -187,11 +244,15 @@ class GlobalSettingsUpdate(BaseModel):
 
     port: int | None = None
     webui_port: int | None = None
+    dashboard_host: str | None = None
     enable_eventlog: bool | None = None
     enable_password_error_disable: bool | None = None
     auto_restart_on_crash: bool | None = None
     restart_delay_seconds: int | None = None
     cache_max_entries: int | None = None
+    dashboard_password_required: bool | None = None
+    session_ttl_seconds: int | None = None
+    encryption_key_source: Literal["environment", "dpapi"] | None = None
 
 
 class SettingsUpdate(BaseModel):
@@ -209,22 +270,6 @@ class DashboardStats(BaseModel):
     total_logins: int = 0
     success_logins: int = 0
     failed_logins: int = 0
-
-
-class LoginRecord(BaseModel):
-    """登录记录"""
-
-    username: str
-    login_time: str
-    ip_address: str
-    status: str
-
-
-class LoginTrend(BaseModel):
-    """登录趋势数据"""
-
-    time: str
-    count: int
 
 
 class AccountDeleteRequest(BaseModel):

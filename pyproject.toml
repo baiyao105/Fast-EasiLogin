@@ -15,6 +15,8 @@ dev = [
 [project]
 dependencies = [
   "aiosqlite >= 0.20.0",
+  "argon2-cffi >= 23.1.0",
+  "cryptography >= 43.0.0",
   "fastapi ~=0.141.0",
   "granian[rloop] ~=2.8.0",
   "httpx[http2] ~= 0.28.1",
@@ -50,6 +52,7 @@ warn_unused_ignores = true
 ignore_errors = true
 module = [
   "servicemanager",
+  "win32crypt",
   "win32event",
   "win32service",
   "win32serviceutil"
@@ -131,11 +134,12 @@ select = [
 "fast_easilogin/app/runner.py" = ["PLC0415"]
 "fast_easilogin/app/runtime.py" = ["PLC0415", "TRY003"]
 "fast_easilogin/auth/service.py" = ["TRY301"]
-"tests/*" = ["B011"]
+"tests/*" = ["B011", "B017", "PLR2004", "UP017"]
 
 [tool.ty.analysis]
 allowed-unresolved-imports = [
   "servicemanager",
+  "win32crypt",
   "win32event",
   "win32service",
   "win32serviceutil"

@@ -28,6 +28,7 @@ from fast_easilogin.storage.models import (
     UserInfoRequest,
     UserRecord,
 )
+from fast_easilogin.storage.repositories.accounts import save_credentials
 from fast_easilogin.storage.store import (
     find_user,
     get_active_users,
@@ -110,6 +111,7 @@ async def savedata():
 @router.post("/user/info", response_model=DataResponse)
 async def user_info(
     body: UserInfoRequest,
+    request: Request,
     services: Services = Depends(_get_services),
     db: AsyncSession = Depends(get_db),
 ):
@@ -150,16 +152,7 @@ async def sso_login_user(  # noqa: PLR0917
     if record is None or not record.active:
         raise HTTPException(status_code=404, detail={"message": "user_not_found", "statusCode": "404"})
     login_account = record.phone or userid
-    try:
-        token_info = await user_login(services, login_account, record.password, userid_for_disable=record.user_id)
-    except Exception:
-        services.state.record_login(
-            username=record.nick_name or userid,
-            ip=request.client.host if request and request.client else "unknown",
-            status="failed",
-            avatar_url="",
-        )
-        raise
+    token_info = await user_login(services, login_account, None, userid_for_disable=record.user_id)
     token = str(token_info.token)
     response.set_cookie(
         key="pt_token",
@@ -181,12 +174,6 @@ async def sso_login_user(  # noqa: PLR0917
         record.user_id,
         token,
         nickname=str(token_info.nick_name or ""),
-        avatar_url=str(token_info.avatar_url or ""),
-    )
-    services.state.record_login(
-        username=str(token_info.nick_name or userid),
-        ip=request.client.host if request and request.client else "unknown",
-        status="success",
         avatar_url=str(token_info.avatar_url or ""),
     )
     return ok_response()
@@ -224,6 +211,9 @@ async def save_user_data(
                 pt_timestamp=(prev.pt_timestamp if prev else None),
             )
             await save_user(db, record)
+            if services.encryptor is None:
+                raise HTTPException(status_code=503, detail="credential_encryption_unavailable")  # noqa: TRY301
+            await save_credentials(db, key_uid, body.userid, body.password, services.encryptor)
             await db.commit()
             logger.info("更新用户信息: phone={} user_id={}", body.userid, key_uid)
             return ok_response()
@@ -250,6 +240,12 @@ async def save_user_data(
             pt_timestamp=body.pt_timestamp,
         )
         await save_user(db, record)
+        if services.encryptor is None:
+            raise HTTPException(status_code=503, detail="credential_encryption_unavailable")  # noqa: TRY301
+        if rec is None and not body.pt_username:
+            raise HTTPException(status_code=400, detail="credential_account_required")  # noqa: TRY301
+        if rec is None and not body.pt_token:
+            raise HTTPException(status_code=400, detail="credential_password_required")  # noqa: TRY301
         await db.commit()
 
         if body.pt_token and not body.pt_token.endswith(TOKEN_OFFLINE_SUFFIX):
