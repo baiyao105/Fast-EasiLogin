@@ -7,6 +7,7 @@ import {
   type AuthStatus,
   type DashboardAccount,
   type EncryptionRotateResult,
+  type EncryptionSetupResult,
   type LoginEvent,
   type LoginEventListParams,
   type LoginEventSummary,
@@ -16,6 +17,7 @@ import {
   type ServiceStatus,
   type SettingsPatchResponse,
   type SettingsSnapshot,
+  type SetupStatus,
 } from './types';
 
 export function unwrap<T>(envelope: ApiEnvelope<T>): T {
@@ -180,6 +182,19 @@ export const api = {
   serviceStatus: () => get<ServiceStatus>('/service/status'),
   restartService: () => post<ServiceCommandResult>('/service/restart'),
   stopService: () => post<ServiceCommandResult>('/service/stop'),
+
+  setupStatus: () => get<SetupStatus>('/setup/status'),
+  listKeyPreview: async (): Promise<string | null> => {
+    const res = await get<{ key?: string }>('/setup/encryption/key-preview');
+    return res?.key ?? null;
+  },
+  setupEncryption: (body: {
+    mode: 'generate' | 'custom';
+    key_source: 'environment' | 'dpapi';
+    custom_key?: string | null;
+  }) => post<EncryptionSetupResult>('/setup/encryption', body),
+  changeDashboardPassword: (password: string) =>
+    post<AuthStatus>('/auth/login', { password }),
 };
 
 export { http };

@@ -126,6 +126,9 @@ export type SettingsSnapshot = {
     dashboard_password_required: boolean;
     session_ttl_seconds: number;
     enable_password_error_disable: boolean;
+    password_set?: boolean;
+    force_password_for_host?: boolean;
+    is_loopback?: boolean;
   };
   encryption: {
     key_source: 'environment' | 'dpapi';
@@ -169,3 +172,17 @@ export type StreamEvent =
         error_code?: string | null;
       };
     };
+
+export type SetupStatus = {
+  oobe_completed: boolean;
+  encryption_ready: boolean;
+  key_source: 'environment' | 'dpapi';
+  key_version: number;
+};
+
+export type EncryptionSetupResult = {
+  ok: boolean;
+  key_source: string;
+  key_version: number;
+  key: string | null;
+};

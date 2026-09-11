@@ -5,7 +5,6 @@ import {
   Gear,
   House,
   Persons,
-  ShieldCheck,
 } from '@gravity-ui/icons';
 import {
   Avatar,
@@ -34,9 +33,11 @@ const NAV_ITEMS: Array<{
 function Logo() {
   return (
     <div className="flex items-center gap-2">
-      <span className="flex size-8 items-center justify-center rounded-lg bg-accent/15 text-accent">
-        <ShieldCheck aria-hidden="true" className="size-5" />
-      </span>
+      <img
+        src="/logo.png"
+        alt="FastLogin"
+        className="size-8 rounded-lg object-contain"
+      />
       <span className="text-base font-bold">FastLogin</span>
     </div>
   );
@@ -46,14 +47,16 @@ function NavItems({
   view,
   onViewChange,
   onNavigate,
+  items,
 }: {
   view: ViewId;
   onViewChange: (view: ViewId) => void;
   onNavigate?: () => void;
+  items: typeof NAV_ITEMS;
 }) {
   return (
     <>
-      {NAV_ITEMS.map(({ id, label, icon: Icon }) => (
+      {items.map(({ id, label, icon: Icon }) => (
         <button
           key={id}
           type="button"
@@ -112,7 +115,11 @@ export function AppShell({
             className="hidden items-center gap-1 lg:flex"
             aria-label="主导航"
           >
-            <NavItems view={view} onViewChange={onViewChange} />
+            <NavItems
+              view={view}
+              onViewChange={onViewChange}
+              items={NAV_ITEMS}
+            />
           </nav>
 
           <div className="flex items-center gap-2">
@@ -170,6 +177,7 @@ export function AppShell({
                   view={view}
                   onViewChange={onViewChange}
                   onNavigate={drawer.close}
+                  items={NAV_ITEMS}
                 />
               </nav>
             </Drawer.Body>

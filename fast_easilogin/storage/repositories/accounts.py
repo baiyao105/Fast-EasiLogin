@@ -9,12 +9,22 @@ from fast_easilogin.storage.encryption.base import CredentialEncryptor, Encrypte
 from fast_easilogin.storage.models import UserCredentialTable
 
 
-async def rotate_credentials(db: AsyncSession, old_encryptor: CredentialEncryptor, new_encryptor: CredentialEncryptor) -> int:
+async def rotate_credentials(
+    db: AsyncSession, old_encryptor: CredentialEncryptor, new_encryptor: CredentialEncryptor
+) -> int:
     rows = (await db.execute(select(UserCredentialTable))).scalars().all()
     replacements = []
     for row in rows:
-        account = old_encryptor.decrypt(EncryptedValue(row.account_ciphertext, row.account_nonce, row.encryption_algorithm, row.encryption_key_version))
-        password = old_encryptor.decrypt(EncryptedValue(row.password_ciphertext, row.password_nonce, row.encryption_algorithm, row.encryption_key_version))
+        account = old_encryptor.decrypt(
+            EncryptedValue(
+                row.account_ciphertext, row.account_nonce, row.encryption_algorithm, row.encryption_key_version
+            )
+        )
+        password = old_encryptor.decrypt(
+            EncryptedValue(
+                row.password_ciphertext, row.password_nonce, row.encryption_algorithm, row.encryption_key_version
+            )
+        )
         account_value = new_encryptor.encrypt(account)
         password_value = new_encryptor.encrypt(password)
         replacements.append((row, account_value, password_value))
@@ -63,12 +73,20 @@ async def save_credentials(
     row.encryption_key_version = encryptor.key_version
 
 
-async def load_credentials(db: AsyncSession, user_id: str, encryptor: CredentialEncryptor) -> DecryptedCredentials | None:
+async def load_credentials(
+    db: AsyncSession, user_id: str, encryptor: CredentialEncryptor
+) -> DecryptedCredentials | None:
     row = await db.get(UserCredentialTable, user_id)
     if row is None:
         return None
-    account = encryptor.decrypt(EncryptedValue(row.account_ciphertext, row.account_nonce, row.encryption_algorithm, row.encryption_key_version))
-    password = encryptor.decrypt(EncryptedValue(row.password_ciphertext, row.password_nonce, row.encryption_algorithm, row.encryption_key_version))
+    account = encryptor.decrypt(
+        EncryptedValue(row.account_ciphertext, row.account_nonce, row.encryption_algorithm, row.encryption_key_version)
+    )
+    password = encryptor.decrypt(
+        EncryptedValue(
+            row.password_ciphertext, row.password_nonce, row.encryption_algorithm, row.encryption_key_version
+        )
+    )
     return DecryptedCredentials(account=account, password=password)
 
 

@@ -197,6 +197,30 @@ export function useRotateEncryption() {
   });
 }
 
+export function useSetupStatus() {
+  return useQuery({
+    queryKey: ['setup-status'],
+    queryFn: api.setupStatus,
+    retry: 1,
+    refetchOnWindowFocus: true,
+    refetchOnMount: 'always',
+  });
+}
+
+export function useSetupEncryption() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: api.setupEncryption,
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['setup-status'] }),
+        queryClient.invalidateQueries({ queryKey: ['settings'] }),
+        queryClient.invalidateQueries({ queryKey: ['auth-status'] }),
+      ]);
+    },
+  });
+}
+
 export function useRestartService() {
   const queryClient = useQueryClient();
   return useMutation({

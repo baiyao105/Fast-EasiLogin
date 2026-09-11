@@ -92,7 +92,9 @@ async def create(body: AccountCreateRequest, request: Request) -> DashboardAccou
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         except ValueError as exc:
             await db.rollback()
-            raise HTTPException(status_code=409 if str(exc) == "account_already_exists" else 400, detail=str(exc)) from exc
+            raise HTTPException(
+                status_code=409 if str(exc) == "account_already_exists" else 400, detail=str(exc)
+            ) from exc
         except IntegrityError as exc:
             await db.rollback()
             raise HTTPException(status_code=409, detail="phone_already_exists") from exc
@@ -100,14 +102,23 @@ async def create(body: AccountCreateRequest, request: Request) -> DashboardAccou
 
 
 @router.get("", response_model=Page[DashboardAccount])
-async def list_accounts(request: Request, page: int = 1, page_size: int = 20, q: str | None = None, active: bool | None = None) -> Page[DashboardAccount]:
+async def list_accounts(
+    request: Request, page: int = 1, page_size: int = 20, q: str | None = None, active: bool | None = None
+) -> Page[DashboardAccount]:
     if page_size > MAX_PAGE_SIZE:
         raise HTTPException(status_code=422, detail="page_size_too_large")
     async with request.app.state.db_factory() as db:
         users = await get_all_users(db)
-    users = [u for u in users if (q is None or q.lower() in u.user_id.lower() or q.lower() in u.nick_name.lower()) and (active is None or u.active == active)]
+    users = [
+        u
+        for u in users
+        if (q is None or q.lower() in u.user_id.lower() or q.lower() in u.nick_name.lower())
+        and (active is None or u.active == active)
+    ]
     start = (page - 1) * page_size
-    return Page(items=[_dto(u) for u in users[start:start + page_size]], page=page, page_size=page_size, total=len(users))
+    return Page(
+        items=[_dto(u) for u in users[start : start + page_size]], page=page, page_size=page_size, total=len(users)
+    )
 
 
 @router.get("/{user_id}", response_model=DashboardAccount)

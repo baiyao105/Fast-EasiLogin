@@ -1,5 +1,5 @@
 import { TriangleExclamation } from '@gravity-ui/icons';
-import { AlertDialog, Button, toast } from '@heroui/react';
+import { AlertDialog, Button, Spinner, toast } from '@heroui/react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ViewId } from '@/components/app-shell';
@@ -136,9 +136,6 @@ export function HomePage({
     setReconnecting(true);
     try {
       await service.refetch();
-      if (service.isError || service.isFetching) {
-        // refetch 后再读最新状态
-      }
       await recentEvents.refetch();
       setStreamKey((key) => key + 1);
       if (!service.isError) {
@@ -330,7 +327,7 @@ export function HomePage({
 
       <AlertDialog isOpen={disconnectOpen} onOpenChange={setDisconnectOpen}>
         <AlertDialog.Backdrop
-          className="bg-linear-to-t from-red-950/90 via-red-950/50 to-transparent"
+          className="bg-linear-to-t from-danger/90 via-danger/50 to-transparent"
           variant="blur"
           isDismissable={false}
           isKeyboardDismissDisabled
@@ -354,6 +351,7 @@ export function HomePage({
                   isDisabled={reconnecting}
                   onPress={() => void handleReconnect()}
                 >
+                  {reconnecting ? <Spinner size="sm" /> : null}
                   {reconnecting ? '重连中...' : '重连'}
                 </Button>
               </AlertDialog.Footer>

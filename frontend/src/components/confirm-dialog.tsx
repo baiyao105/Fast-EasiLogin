@@ -1,4 +1,4 @@
-import { AlertDialog, Button } from '@heroui/react';
+import { AlertDialog, Button, Spinner } from '@heroui/react';
 
 export function ConfirmDialog({
   open,
@@ -30,11 +30,15 @@ export function ConfirmDialog({
               <AlertDialog.Icon status={status} />
               <AlertDialog.Heading>{title}</AlertDialog.Heading>
             </AlertDialog.Header>
-            <AlertDialog.Body className="text-sm leading-6 text-neutral-600">
+            <AlertDialog.Body className="text-sm leading-6 text-muted">
               {description}
             </AlertDialog.Body>
             <AlertDialog.Footer>
-              <Button variant="secondary" onPress={() => onOpenChange(false)}>
+              <Button
+                variant="secondary"
+                isDisabled={loading}
+                onPress={() => onOpenChange(false)}
+              >
                 {cancelLabel}
               </Button>
               <Button
@@ -42,7 +46,8 @@ export function ConfirmDialog({
                 isDisabled={loading}
                 onPress={onConfirm}
               >
-                {confirmLabel}
+                {loading ? <Spinner size="sm" /> : null}
+                {loading ? '处理中…' : confirmLabel}
               </Button>
             </AlertDialog.Footer>
           </AlertDialog.Dialog>

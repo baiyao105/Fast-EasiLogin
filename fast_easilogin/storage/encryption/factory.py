@@ -6,16 +6,18 @@ import os
 from fast_easilogin.storage.encryption.aes_gcm import AesGcmEncryptor, decode_environment_key
 from fast_easilogin.storage.encryption.base import CredentialEncryptor
 from fast_easilogin.storage.encryption.dpapi import DpapiKeyProvider
+from fast_easilogin.storage.encryption.env_store import load_encryption_env
 
 
 def create_encryptor(key_source: str = "environment", key_version: int = 1) -> CredentialEncryptor:
+    env = load_encryption_env()
     if key_source == "environment":
-        source = os.environ.get("FAST_EASILOGIN_ENCRYPTION_KEY")
+        source = env.get("FAST_EASILOGIN_ENCRYPTION_KEY") or os.environ.get("FAST_EASILOGIN_ENCRYPTION_KEY")
         if not source:
             raise RuntimeError("FAST_EASILOGIN_ENCRYPTION_KEY is required")  # noqa: TRY003
         return AesGcmEncryptor(decode_environment_key(source), key_version)
     if key_source == "dpapi":
-        protected = os.environ.get("FAST_EASILOGIN_DPAPI_KEY")
+        protected = env.get("FAST_EASILOGIN_DPAPI_KEY") or os.environ.get("FAST_EASILOGIN_DPAPI_KEY")
         if not protected:
             raise RuntimeError("FAST_EASILOGIN_DPAPI_KEY is required for dpapi")  # noqa: TRY003
         try:

@@ -70,7 +70,9 @@
     padding: 0.5rem 0.75rem;
     font-size: 0.875rem;
     color: color-mix(in oklab, var(--foreground) 80%, transparent);
-    transition: color 150ms ease, background-color 150ms ease;
+    transition:
+      color 150ms ease,
+      background-color 150ms ease;
   }
 
   .nav-link:hover {
@@ -89,8 +91,36 @@
     outline-offset: 2px;
   }
 
+  .oobe-fade-in {
+    animation: oobe-fade-in 320ms var(--ease-out, ease-out) both;
+  }
+
+  @keyframes oobe-fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(12px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  .app-brand-mark {
+    display: grid;
+    place-items: center;
+    color: var(--accent-foreground);
+    background: linear-gradient(
+      145deg,
+      color-mix(in oklab, var(--accent) 85%, black),
+      color-mix(in oklab, var(--accent) 60%, cyan)
+    );
+    box-shadow: 0 8px 24px color-mix(in oklab, var(--accent) 30%, transparent);
+  }
+
   @media (prefers-reduced-motion: reduce) {
-    .page-enter {
+    .page-enter,
+    .oobe-fade-in {
       animation: none;
     }
   }

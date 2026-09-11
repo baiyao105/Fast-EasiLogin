@@ -2,9 +2,14 @@ import { Toast } from '@heroui/react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useState } from 'react';
 import { AppShell, type ViewId } from '@/components/app-shell';
+import { OobeModal } from '@/components/oobe-modal';
 import { SignInGate } from '@/components/sign-in-gate';
 import { ErrorState, LoadingState } from '@/components/ui-states';
-import { useAuthStatus, useLogout } from '@/hooks/use-dashboard';
+import {
+  useAuthStatus,
+  useLogout,
+  useSetupStatus,
+} from '@/hooks/use-dashboard';
 import { setUnauthorizedHandler } from '@/lib/api';
 import { readHashView, writeHashView } from '@/lib/utils';
 import { AccountsPage } from '@/pages/accounts-page';
@@ -22,7 +27,10 @@ export default function App() {
   const queryClient = useQueryClient();
   const auth = useAuthStatus();
   const logout = useLogout();
+  const setup = useSetupStatus();
   const [view, setView] = useState<ViewId>(() => coerceView(readHashView()));
+
+  const oobeOpen = Boolean(setup.data) && !setup.data?.oobe_completed;
 
   useEffect(() => {
     setUnauthorizedHandler(() => {
@@ -32,10 +40,13 @@ export default function App() {
   }, [queryClient]);
 
   useEffect(() => {
-    const onHashChange = () => setView(coerceView(readHashView()));
+    const onHashChange = () => {
+      setView(coerceView(readHashView()));
+      void queryClient.invalidateQueries({ queryKey: ['setup-status'] });
+    };
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
-  }, []);
+  }, [queryClient]);
 
   const handleViewChange = useCallback((next: ViewId) => {
     setView(next);
@@ -82,6 +93,13 @@ export default function App() {
           {view === 'settings' ? <SettingsPage /> : null}
         </AppShell>
       )}
+      <OobeModal
+        open={oobeOpen}
+        onOpenChange={(next) => {
+          if (!next && !oobeOpen) return;
+          if (!next) void setup.refetch();
+        }}
+      />
     </>
   );
 }

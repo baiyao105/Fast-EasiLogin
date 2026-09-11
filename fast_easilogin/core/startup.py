@@ -18,7 +18,7 @@ def is_port_available(host: str, port: int) -> bool:
 
 
 def load_app_settings_sync():
-    """同步加载启动配置"""
+    """同步加载启动配置（读取全部字段，避免重启回落默认值）。"""
     db_file = DATA_DIR / "data.db"
     ensure_data_dir()
 
@@ -28,8 +28,10 @@ def load_app_settings_sync():
     try:
         try:
             row = conn.execute(
-                "SELECT port, webui_port, enable_eventlog, auto_restart_on_crash, "
-                "restart_delay_seconds, cache_max_entries, enable_password_error_disable "
+                "SELECT port, webui_port, dashboard_host, enable_eventlog, "
+                "auto_restart_on_crash, restart_delay_seconds, cache_max_entries, "
+                "enable_password_error_disable, dashboard_password_required, "
+                "session_ttl_seconds, encryption_key_source, encryption_key_version "
                 "FROM settings WHERE id = 1"
             ).fetchone()
         except sqlite3.OperationalError:
@@ -41,11 +43,16 @@ def load_app_settings_sync():
                 "Global": {
                     "port": row[0],
                     "webui_port": row[1],
-                    "enable_eventlog": bool(row[2]),
-                    "auto_restart_on_crash": bool(row[3]),
-                    "restart_delay_seconds": row[4],
-                    "cache_max_entries": row[5],
-                    "enable_password_error_disable": bool(row[6]),
+                    "dashboard_host": row[2],
+                    "enable_eventlog": bool(row[3]),
+                    "auto_restart_on_crash": bool(row[4]),
+                    "restart_delay_seconds": row[5],
+                    "cache_max_entries": row[6],
+                    "enable_password_error_disable": bool(row[7]),
+                    "dashboard_password_required": bool(row[8]),
+                    "session_ttl_seconds": row[9],
+                    "encryption_key_source": row[10],
+                    "encryption_key_version": row[11],
                 }
             }
         )

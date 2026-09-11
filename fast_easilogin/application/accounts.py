@@ -26,8 +26,17 @@ class AccountApplication:
     def __init__(self) -> None:
         self.verifications: dict[str, Verification] = {}
 
-    def issue(self, session_id: str, account: str, password: str, profile: UpstreamUserProfile, encryptor: CredentialEncryptor) -> Verification:
-        value = Verification(secrets.token_urlsafe(32), session_id, encryptor.encrypt(account), encryptor.encrypt(password), profile, datetime.now(UTC) + timedelta(minutes=5))
+    def issue(
+        self, session_id: str, account: str, password: str, profile: UpstreamUserProfile, encryptor: CredentialEncryptor
+    ) -> Verification:
+        value = Verification(
+            secrets.token_urlsafe(32),
+            session_id,
+            encryptor.encrypt(account),
+            encryptor.encrypt(password),
+            profile,
+            datetime.now(UTC) + timedelta(minutes=5),
+        )
         self.verifications[value.token] = value
         return value
 
@@ -55,7 +64,9 @@ class AccountApplication:
             updated_at=now,
         )
         await save_user(db, record)
-        await save_credentials(db, record.user_id, encryptor.decrypt(value.account), encryptor.decrypt(value.password), encryptor)
+        await save_credentials(
+            db, record.user_id, encryptor.decrypt(value.account), encryptor.decrypt(value.password), encryptor
+        )
         value.used = True
         return record
 

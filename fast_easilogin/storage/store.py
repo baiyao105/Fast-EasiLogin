@@ -203,6 +203,8 @@ async def load_settings(db: AsyncSession) -> AppSettings:
                 "session_ttl_seconds": row.session_ttl_seconds,
                 "encryption_key_source": row.encryption_key_source,
                 "encryption_key_version": row.encryption_key_version,
+                "oobe_completed": bool(getattr(row, "oobe_completed", False)),
+                "debug_enabled": bool(getattr(row, "debug_enabled", False)),
             }
         }
     )
@@ -229,6 +231,8 @@ async def initialize_settings(db: AsyncSession) -> AppSettings:
                 "session_ttl_seconds": row.session_ttl_seconds,
                 "encryption_key_source": row.encryption_key_source,
                 "encryption_key_version": row.encryption_key_version,
+                "oobe_completed": bool(getattr(row, "oobe_completed", False)),
+                "debug_enabled": bool(getattr(row, "debug_enabled", False)),
             }
         }
     )
@@ -255,6 +259,8 @@ async def save_settings(db: AsyncSession, settings: AppSettings) -> None:
     row.session_ttl_seconds = global_data.session_ttl_seconds
     row.encryption_key_source = global_data.encryption_key_source
     row.encryption_key_version = global_data.encryption_key_version
+    row.oobe_completed = global_data.oobe_completed
+    row.debug_enabled = global_data.debug_enabled
     row.updated_at = now
 
 

@@ -24,10 +24,19 @@ def password_matches(password: str, hashed: str) -> bool:
         return False
 
 
+LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1", "0000:0000:0000:0000:0000:0000:0000:0001"}
+
+
 async def password_required(request: Request) -> bool:
     async with request.app.state.db_factory() as db:
         settings = await load_settings(db)
-    return request.app.state.services.dashboard_host not in {"127.0.0.1", "localhost", "::1"}
+    g = settings.global_settings
+    host = (g.dashboard_host or "").strip().lower()
+    # 非回环监听：强制要求密码
+    if host and host not in LOOPBACK_HOSTS:
+        return True
+    # 本机监听：用户可选开启密码
+    return bool(g.dashboard_password_required)
 
 
 async def require_dashboard_auth(request: Request) -> None:

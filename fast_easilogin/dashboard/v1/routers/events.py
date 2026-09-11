@@ -35,4 +35,8 @@ async def stream(request: Request, last_event_id: str | None = Header(default=No
         finally:
             await bus.unsubscribe(queue)
 
-    return StreamingResponse(generate(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"})
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+    )

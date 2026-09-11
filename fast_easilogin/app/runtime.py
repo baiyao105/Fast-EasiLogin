@@ -52,14 +52,22 @@ class AppRuntime:
                 limits=httpx.Limits(max_keepalive_connections=100, max_connections=500),
                 http2=True,
             )
+            # 首次启动可能还没有加密密钥（OOBE 未完成），允许 encryptor=None 继续启动
+            encryptor = None
+            try:
+                encryptor = create_encryptor(
+                    settings.global_settings.encryption_key_source,
+                    settings.global_settings.encryption_key_version,
+                )
+            except Exception as exc:
+                logger.warning("加密器初始化失败（可能尚未完成 OOBE）: {}", exc)
+
             self.services = Services(
                 http=http_client,
                 state=RuntimeState(),
                 listen_port=api_cfg.port,
                 dashboard_host=dashboard_cfg.host if dashboard_cfg is not None else "127.0.0.1",
-                encryptor=create_encryptor(
-                    settings.global_settings.encryption_key_source, settings.global_settings.encryption_key_version
-                ),
+                encryptor=encryptor,
                 event_bus=EventBus(),
                 db_factory=get_session_factory(),
                 runtime_controller=self,
@@ -139,7 +147,18 @@ class AppRuntime:
             self.dashboard_server.stop()
 
     def restart(self) -> None:
-        """supervisor管理重启"""
+        """拉起新进程后停止当前进程。"""
+        import subprocess
+        import sys
+
+        logger.info("收到重启指令，准备拉起新进程并退出当前进程")
+        try:
+            subprocess.Popen(
+                [sys.executable, "-m", "fast_easilogin", *sys.argv[1:]],
+                close_fds=True,
+            )
+        except Exception:
+            logger.exception("拉起新进程失败")
         self.stop()
 
     def status(self) -> str:

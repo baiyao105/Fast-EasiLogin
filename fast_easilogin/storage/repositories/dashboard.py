@@ -24,7 +24,11 @@ async def save_credential(db: AsyncSession, password_hash: str) -> None:
 
 async def create_session(db: AsyncSession, session_id: str, expires_at: datetime, remote_address: str | None) -> None:
     now = datetime.now(UTC)
-    db.add(DashboardSessionTable(id=session_id, created_at=now, last_seen_at=now, expires_at=expires_at, remote_address=remote_address))
+    db.add(
+        DashboardSessionTable(
+            id=session_id, created_at=now, last_seen_at=now, expires_at=expires_at, remote_address=remote_address
+        )
+    )
 
 
 async def valid_session(db: AsyncSession, session_id: str | None) -> bool:

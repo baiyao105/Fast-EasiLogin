@@ -48,7 +48,14 @@ async def login(body: DashboardLoginRequest, request: Request, response: Respons
         session_id, expires = new_session(settings.global_settings.session_ttl_seconds)
         await create_session(db, session_id, expires, request.client.host if request.client else None)
         await db.commit()
-    response.set_cookie(COOKIE, session_id, httponly=True, secure=request.url.hostname not in {"localhost", "127.0.0.1"}, samesite="lax", expires=expires)
+    response.set_cookie(
+        COOKIE,
+        session_id,
+        httponly=True,
+        secure=request.url.hostname not in {"localhost", "127.0.0.1"},
+        samesite="lax",
+        expires=expires,
+    )
     return AuthStatus(authenticated=True, password_required=True)
 
 
@@ -58,4 +65,6 @@ async def logout(request: Request, response: Response) -> AuthStatus:
         await delete_session(db, request.cookies.get(COOKIE))
         await db.commit()
     response.delete_cookie(COOKIE)
-    return AuthStatus(authenticated=not await password_required(request), password_required=await password_required(request))
+    return AuthStatus(
+        authenticated=not await password_required(request), password_required=await password_required(request)
+    )

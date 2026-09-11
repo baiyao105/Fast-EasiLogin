@@ -23,7 +23,9 @@ def _dto(event) -> LoginEvent:
 
 
 @router.get("", response_model=Page[LoginEvent])
-async def list_events(request: Request, page: int = 1, page_size: int = 20, status: str | None = None, user_id: str | None = None):
+async def list_events(
+    request: Request, page: int = 1, page_size: int = 20, status: str | None = None, user_id: str | None = None
+):
     if page < 1 or page_size < 1 or page_size > MAX_PAGE_SIZE:
         raise HTTPException(status_code=422, detail="invalid_pagination")
     async with request.app.state.db_factory() as db:
@@ -34,7 +36,9 @@ async def list_events(request: Request, page: int = 1, page_size: int = 20, stat
 @router.get("/summary", response_model=LoginEventSummary)
 async def summary(request: Request, hours: int = 24):
     async with request.app.state.db_factory() as db:
-        return LoginEventSummary(counts=await summarize_login_events(db, since=datetime.now(UTC) - timedelta(hours=hours)))
+        return LoginEventSummary(
+            counts=await summarize_login_events(db, since=datetime.now(UTC) - timedelta(hours=hours))
+        )
 
 
 @router.get("/trends")

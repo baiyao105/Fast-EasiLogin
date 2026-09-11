@@ -66,6 +66,8 @@ class SettingTable(SQLModel, table=True):
     session_ttl_seconds: int = Field(default=86400)
     encryption_key_source: str = Field(default="environment", max_length=32)
     encryption_key_version: int = Field(default=1)
+    oobe_completed: bool = Field(default=False)
+    debug_enabled: bool = Field(default=False)
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -243,6 +245,8 @@ class GlobalSettings(BaseModel):
     session_ttl_seconds: int = 86400
     encryption_key_source: Literal["environment", "dpapi"] = "environment"
     encryption_key_version: int = 1
+    oobe_completed: bool = False
+    debug_enabled: bool = False
 
 
 class AppSettings(BaseModel):

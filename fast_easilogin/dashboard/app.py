@@ -53,11 +53,7 @@ def create_app(services: Services | None = None) -> FastAPI:
             except Exception:
                 data = None
 
-        headers = {
-            key: value
-            for key, value in response.headers.items()
-            if key.lower() not in _DROP_HEADERS
-        }
+        headers = {key: value for key, value in response.headers.items() if key.lower() not in _DROP_HEADERS}
 
         if isinstance(data, dict) and {"success", "data", "error", "request_id"}.issubset(data):
             return JSONResponse(data, status_code=response.status_code, headers=headers)

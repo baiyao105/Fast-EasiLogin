@@ -90,6 +90,7 @@ class SettingsPatch(BaseModel):
     runtime: dict[str, Any] | None = None
     authentication: dict[str, Any] | None = None
     encryption: dict[str, Any] | None = None
+    debug: dict[str, Any] | None = None
 
 
 class ServiceCommand(BaseModel):

@@ -1,4 +1,3 @@
-import { ShieldCheck } from '@gravity-ui/icons';
 import { Button, Input, Label, Surface, TextField, toast } from '@heroui/react';
 import { useState } from 'react';
 import { useLogin } from '@/hooks/use-dashboard';
@@ -30,9 +29,11 @@ export function SignInGate({ onComplete }: { onComplete: () => void }) {
     <div className="flex min-h-dvh items-center justify-center bg-background p-6">
       <Surface className="page-enter w-full max-w-md rounded-2xl border border-separator p-8">
         <div className="mb-7 flex items-center gap-2">
-          <span className="flex size-8 items-center justify-center rounded-lg bg-accent/15 text-accent">
-            <ShieldCheck aria-hidden="true" className="size-5" />
-          </span>
+          <img
+            src="/logo.png"
+            alt="FastLogin"
+            className="size-8 rounded-lg object-contain"
+          />
           <div>
             <div className="text-base font-bold">FastLogin</div>
             <div className="text-sm text-muted">Seewo 本地控制台</div>

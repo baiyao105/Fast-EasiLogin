@@ -34,7 +34,6 @@ from fast_easilogin.storage.store import (
     load_settings,
     set_user_active,
     touch_user_login,
-    update_user_profile,
 )
 
 _LOGIN_TASKS: dict[tuple[str, str], asyncio.Task[LoginResult]] = {}
@@ -201,10 +200,11 @@ async def _do_login(
     )
     if record_event:
         await _record_event(services, username=userid, user_id=result.user_id, status="success")
-        factory = get_session_factory()
-        async with factory() as db:
-            if await touch_user_login(db, result.user_id):
-                await db.commit()
+        if result.user_id:
+            factory = get_session_factory()
+            async with factory() as db:
+                if await touch_user_login(db, result.user_id):
+                    await db.commit()
     return result
 
 
