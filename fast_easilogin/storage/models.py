@@ -25,6 +25,12 @@ class UserTable(SQLModel, table=True):
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     last_login_at: datetime | None = None
+    # 扩展资料（登录后从希沃用户信息接口刷新）
+    school: str | None = Field(default=None, max_length=255)
+    stage_name: str | None = Field(default=None, max_length=128)
+    subject_name: str | None = Field(default=None, max_length=128)
+    join_unit_time: int | None = None
+    account_type: int | None = None
 
 
 class UserCredentialTable(SQLModel, table=True):
@@ -106,6 +112,14 @@ class UserRecord(BaseModel):
     real_name: str | None = None
     avatar_url: str = ""
     pt_timestamp: int | None = None
+    last_login_at: datetime | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    school: str | None = None
+    stage_name: str | None = None
+    subject_name: str | None = None
+    join_unit_time: int | None = None
+    account_type: int | None = None
 
 
 class UserInfoBase(BaseModel):

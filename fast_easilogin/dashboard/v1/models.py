@@ -39,6 +39,11 @@ class DashboardAccount(BaseModel):
     login_count: int = 0
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    school: str | None = None
+    stage_name: str | None = None
+    subject_name: str | None = None
+    join_unit_time: int | None = None
+    account_type: int | None = None
 
 
 class AccountVerifyRequest(BaseModel):
@@ -52,6 +57,9 @@ class UpstreamUserProfile(BaseModel):
     nickname: str = ""
     real_name: str | None = None
     avatar_url: str = ""
+    school: str | None = None
+    stage_name: str | None = None
+    subject_name: str | None = None
 
 
 class AccountVerification(BaseModel):

@@ -27,6 +27,14 @@ def _table_to_record(u: UserTable) -> UserRecord:
         real_name=u.real_name,
         avatar_url=u.avatar_url,
         pt_timestamp=u.pt_timestamp,
+        last_login_at=u.last_login_at,
+        created_at=u.created_at,
+        updated_at=u.updated_at,
+        school=getattr(u, "school", None),
+        stage_name=getattr(u, "stage_name", None),
+        subject_name=getattr(u, "subject_name", None),
+        join_unit_time=getattr(u, "join_unit_time", None),
+        account_type=getattr(u, "account_type", None),
     )
 
 
@@ -69,7 +77,13 @@ async def save_user(db: AsyncSession, record: UserRecord) -> None:
         "real_name": record.real_name,
         "avatar_url": record.avatar_url,
         "pt_timestamp": record.pt_timestamp,
-        "created_at": now,
+        "school": getattr(record, "school", None),
+        "stage_name": getattr(record, "stage_name", None),
+        "subject_name": getattr(record, "subject_name", None),
+        "join_unit_time": getattr(record, "join_unit_time", None),
+        "account_type": getattr(record, "account_type", None),
+        "last_login_at": getattr(record, "last_login_at", None),
+        "created_at": getattr(record, "created_at", None) or now,
         "updated_at": now,
     }
     statement = insert(UserTable).values(**values)
@@ -82,6 +96,12 @@ async def save_user(db: AsyncSession, record: UserRecord) -> None:
             "real_name": statement.excluded.real_name,
             "avatar_url": statement.excluded.avatar_url,
             "pt_timestamp": statement.excluded.pt_timestamp,
+            "school": statement.excluded.school,
+            "stage_name": statement.excluded.stage_name,
+            "subject_name": statement.excluded.subject_name,
+            "join_unit_time": statement.excluded.join_unit_time,
+            "account_type": statement.excluded.account_type,
+            "last_login_at": statement.excluded.last_login_at,
             "updated_at": now,
         },
     )
@@ -92,8 +112,9 @@ async def delete_user(db: AsyncSession, user_id: str) -> bool:
     user = await db.get(UserTable, user_id)
     if not user:
         return False
-    await db.delete(user)
+    # 先删子表凭据，避免 users 外键约束冲突
     await delete_credentials(db, user_id)
+    await db.delete(user)
     return True
 
 
@@ -107,6 +128,56 @@ async def set_user_active(db: AsyncSession, user_id: str, active: bool) -> bool:
     if not user:
         return False
     user.active = active
+    user.updated_at = datetime.now(UTC)
+    return True
+
+
+async def touch_user_login(db: AsyncSession, user_id: str) -> bool:
+    """真实登录成功后刷新最近活跃时间。"""
+    user = await db.get(UserTable, user_id)
+    if not user:
+        return False
+    now = datetime.now(UTC)
+    user.last_login_at = now
+    user.updated_at = now
+    return True
+
+
+async def update_user_profile(
+    db: AsyncSession,
+    user_id: str,
+    *,
+    nick_name: str | None = None,
+    real_name: str | None = None,
+    avatar_url: str | None = None,
+    phone: str | None = None,
+    school: str | None = None,
+    stage_name: str | None = None,
+    subject_name: str | None = None,
+    join_unit_time: int | None = None,
+    account_type: int | None = None,
+) -> bool:
+    user = await db.get(UserTable, user_id)
+    if not user:
+        return False
+    if nick_name is not None:
+        user.nick_name = nick_name
+    if real_name is not None:
+        user.real_name = real_name
+    if avatar_url is not None:
+        user.avatar_url = avatar_url
+    if phone is not None:
+        user.phone = phone
+    if school is not None:
+        user.school = school
+    if stage_name is not None:
+        user.stage_name = stage_name
+    if subject_name is not None:
+        user.subject_name = subject_name
+    if join_unit_time is not None:
+        user.join_unit_time = join_unit_time
+    if account_type is not None:
+        user.account_type = account_type
     user.updated_at = datetime.now(UTC)
     return True
 

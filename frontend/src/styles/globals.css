@@ -1,0 +1,97 @@
+@import "tailwindcss";
+@import "@heroui/styles";
+
+@layer base {
+  :root {
+    --font-sans:
+      "Inter", "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei",
+      "Noto Sans SC", "Segoe UI", sans-serif;
+
+    --accent: oklch(0.52 0.17 264);
+    --accent-foreground: var(--snow);
+    --link: var(--accent);
+    --focus: var(--accent);
+
+    color-scheme: light dark;
+  }
+
+  html {
+    font-family: var(--font-sans);
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    margin: 0;
+    background: var(--background);
+    color: var(--foreground);
+  }
+
+  #root {
+    min-height: 100dvh;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--accent) 25%, transparent);
+  }
+}
+
+@layer components {
+  @keyframes page-enter {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+  }
+
+  .page-enter {
+    animation: page-enter 200ms var(--ease-out, ease-out) both;
+  }
+
+  .page-metric-value {
+    font-size: 28px;
+    font-weight: 650;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .page-card {
+    border: 1px solid var(--separator);
+    border-radius: 16px;
+    background: var(--surface, var(--overlay, white));
+  }
+
+  .nav-link {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    color: color-mix(in oklab, var(--foreground) 80%, transparent);
+    transition: color 150ms ease, background-color 150ms ease;
+  }
+
+  .nav-link:hover {
+    background: var(--default);
+    color: var(--foreground);
+  }
+
+  .nav-link[data-active="true"] {
+    background: color-mix(in oklab, var(--accent) 10%, transparent);
+    color: var(--accent);
+    font-weight: 500;
+  }
+
+  .nav-link:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .page-enter {
+      animation: none;
+    }
+  }
+}

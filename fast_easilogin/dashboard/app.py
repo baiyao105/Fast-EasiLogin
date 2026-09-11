@@ -17,6 +17,9 @@ from fast_easilogin.dashboard.v1.router import router as v1_router
 
 _STATIC_DIR = Path(__file__).resolve().parent.parent / "assets" / "static"
 
+# 重建响应时不要原样拷贝这些头（长度/编码会与新 body 不一致）
+_DROP_HEADERS = {"content-length", "content-encoding", "transfer-encoding"}
+
 
 def create_app(services: Services | None = None) -> FastAPI:
     app = FastAPI(
@@ -32,30 +35,32 @@ def create_app(services: Services | None = None) -> FastAPI:
         app.state.services = services
         app.state.db_factory = services.db_factory
 
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=ALLOWED_ORIGINS,
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "PATCH", "DELETE"],
-        allow_headers=["*"],
-    )
-    app.add_middleware(GZipMiddleware, minimum_size=500)
-    app.include_router(v1_router)
-
+    # 信封中间件必须在 GZip 之内，才能拿到未压缩的 JSON body。
+    # Starlette 中后 add 的 middleware 在外层，因此这里先注册信封。
     @app.middleware("http")
     async def v1_envelope(request: Request, call_next):
         response = await call_next(request)
-        if not request.url.path.startswith("/api/v1") or response.headers.get("content-type", "").startswith(
-            "text/event-stream"
-        ):
+        content_type = response.headers.get("content-type", "")
+        if not request.url.path.startswith("/api/v1") or content_type.startswith("text/event-stream"):
             return response
+
         body = b"".join([chunk async for chunk in response.body_iterator])
         try:
             data = json.loads(body) if body else None
-        except json.JSONDecodeError:
-            data = body.decode("utf-8", errors="replace")
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            try:
+                data = body.decode("utf-8", errors="replace")
+            except Exception:
+                data = None
+
+        headers = {
+            key: value
+            for key, value in response.headers.items()
+            if key.lower() not in _DROP_HEADERS
+        }
+
         if isinstance(data, dict) and {"success", "data", "error", "request_id"}.issubset(data):
-            return JSONResponse(data, status_code=response.status_code, headers=dict(response.headers))
+            return JSONResponse(data, status_code=response.status_code, headers=headers)
         if response.status_code >= 400:  # noqa: PLR2004
             detail = data.get("detail", "request_failed") if isinstance(data, dict) else "request_failed"
             error = {
@@ -66,11 +71,23 @@ def create_app(services: Services | None = None) -> FastAPI:
             return JSONResponse(
                 {"success": False, "data": None, "error": error, "request_id": secrets.token_urlsafe(12)},
                 status_code=response.status_code,
+                headers=headers,
             )
         return JSONResponse(
             {"success": True, "data": data, "error": None, "request_id": secrets.token_urlsafe(12)},
             status_code=response.status_code,
+            headers=headers,
         )
+
+    app.add_middleware(GZipMiddleware, minimum_size=500)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=ALLOWED_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PATCH", "DELETE"],
+        allow_headers=["*"],
+    )
+    app.include_router(v1_router)
 
     @app.get("/health")
     async def health():

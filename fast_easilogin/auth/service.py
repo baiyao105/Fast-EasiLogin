@@ -33,6 +33,8 @@ from fast_easilogin.storage.store import (
     find_user,
     load_settings,
     set_user_active,
+    touch_user_login,
+    update_user_profile,
 )
 
 _LOGIN_TASKS: dict[tuple[str, str], asyncio.Task[LoginResult]] = {}
@@ -71,13 +73,17 @@ async def authenticate_user(
     userid: str,
     password_plain: str | None = None,
     userid_for_disable: str | None = None,
+    *,
+    record_event: bool = True,
 ) -> LoginResult:
     task_key = (userid, hashlib.sha256((password_plain or "").encode("utf-8")).hexdigest())
     existing = _LOGIN_TASKS.get(task_key)
     if existing is not None and not existing.done():
         return await asyncio.shield(existing)
 
-    task = asyncio.create_task(_do_login(services, userid, password_plain, userid_for_disable))
+    task = asyncio.create_task(
+        _do_login(services, userid, password_plain, userid_for_disable, record_event=record_event)
+    )
     _LOGIN_TASKS[task_key] = task
     try:
         return await asyncio.shield(task)
@@ -91,6 +97,8 @@ async def _do_login(
     userid: str,
     password_plain: str | None,
     userid_for_disable: str | None = None,
+    *,
+    record_event: bool = True,
 ) -> LoginResult:
     if not password_plain:
         factory = get_session_factory()
@@ -99,13 +107,14 @@ async def _do_login(
                 raise NetworkError("凭据加密器未初始化")
             credentials = await load_credentials(db, userid_for_disable or userid, services.encryptor)
             if credentials is None:
-                await _record_event(
-                    services,
-                    username=userid,
-                    user_id=userid_for_disable,
-                    status="invalid_credentials",
-                    error_code="credentials_not_found",
-                )
+                if record_event:
+                    await _record_event(
+                        services,
+                        username=userid,
+                        user_id=userid_for_disable,
+                        status="invalid_credentials",
+                        error_code="credentials_not_found",
+                    )
                 raise LoginFailedError("未找到用户凭据")
             password_plain = credentials.password
             userid = credentials.account
@@ -129,43 +138,51 @@ async def _do_login(
         token = data.get("data", {}).get("token")
     except RequestFailedError as err:
         logger.error("login请求失败: userid={} err={}", userid, err)
-        await _record_event(services, username=userid, status="upstream", error_code="request_failed")
+        if record_event:
+            await _record_event(services, username=userid, status="upstream", error_code="request_failed")
         raise NetworkError from err
     except (asyncio.CancelledError, KeyboardInterrupt):
         raise
     except Exception as err:
         logger.error("获取token异常: userid={} err={}", userid, err)
-        await _record_event(services, username=userid, status="system", error_code="request_error")
+        if record_event:
+            await _record_event(services, username=userid, status="system", error_code="request_error")
         raise NetworkError from err
 
     if not token:
         code = data.get("statusCode") if isinstance(data, dict) else None
         msg = data.get("message") if isinstance(data, dict) else None
         logger.warning("登录失败: userid={} code={} message={}", userid, (code or "-"), str(msg or "-"))
-        factory = get_session_factory()
-        async with factory() as db:
-            cfg = await load_settings(db)
-        should_disable = (userid_for_disable is None) or cfg.global_settings.enable_password_error_disable
-        if should_disable:
-            target_id = userid_for_disable or userid
-            try:
-                async with factory() as db:
-                    await set_user_active(db, target_id, False)
-                    await db.commit()
-                logger.info("因密码错误自动禁用账户: user_id={}", target_id)
-            except Exception as e:
-                logger.error("自动禁用账户失败: {}", str(e))
+        # 控制台验证（record_event=False）不写入活动，也不因失败禁用本地账号
+        if record_event:
+            factory = get_session_factory()
+            async with factory() as db:
+                cfg = await load_settings(db)
+            should_disable = (userid_for_disable is None) or cfg.global_settings.enable_password_error_disable
+            if should_disable:
+                target_id = userid_for_disable or userid
+                try:
+                    async with factory() as db:
+                        await set_user_active(db, target_id, False)
+                        await db.commit()
+                    logger.info("因密码错误自动禁用账户: user_id={}", target_id)
+                except Exception as e:
+                    logger.error("自动禁用账户失败: {}", str(e))
+            else:
+                should_disable = False
 
-        await _record_event(
-            services,
-            username=userid,
-            user_id=userid_for_disable,
-            status="disabled" if should_disable else "invalid_credentials",
-            error_code=str(code or "invalid_credentials"),
-        )
+            await _record_event(
+                services,
+                username=userid,
+                user_id=userid_for_disable,
+                status="disabled" if should_disable else "invalid_credentials",
+                error_code=str(code or "invalid_credentials"),
+            )
         raise LoginFailedError
 
     u = data.get("data", {}).get("user", {})
+    # 希沃返回的业务用户 ID 优先取 uid，其次 username；手机号仅作登录账号，不能当 user_id
+    seewo_user_id = u.get("uid") or u.get("userId") or u.get("username")
     result = LoginResult(
         token=token,
         avatar_url=u.get("photoUrl") or "",
@@ -173,7 +190,7 @@ async def _do_login(
         nick_name=u.get("nickName"),
         user_name=u.get("nickName"),
         real_name=u.get("realName"),
-        user_id=u.get("username") or userid,
+        user_id=seewo_user_id or userid,
         uid=u.get("uid"),
         account_id=u.get("accountId"),
         wechat_uid=u.get("wechatUid"),
@@ -182,7 +199,12 @@ async def _do_login(
         city_id=u.get("cityId"),
         raw=data,
     )
-    await _record_event(services, username=userid, user_id=result.user_id, status="success")
+    if record_event:
+        await _record_event(services, username=userid, user_id=result.user_id, status="success")
+        factory = get_session_factory()
+        async with factory() as db:
+            if await touch_user_login(db, result.user_id):
+                await db.commit()
     return result
 
 
@@ -222,7 +244,7 @@ async def get_user_info(
         nick_name=info.get("nickName") or login.nick_name,
         user_name=info.get("nickName") or login.user_name,
         real_name=info.get("realName") or login.real_name,
-        user_id=info.get("username") or login.user_id or userid,
+        user_id=info.get("uid") or info.get("userId") or info.get("username") or login.user_id or userid,
         uid=info.get("uid") or login.uid,
         account_id=info.get("accountId") or login.account_id,
         wechat_uid=info.get("wechatUid") or login.wechat_uid,
@@ -230,7 +252,6 @@ async def get_user_info(
         join_unit_time=info.get("joinUnitTime") or login.join_unit_time,
         city_id=info.get("cityId") or login.city_id,
         account_type=info.get("accountType"),
-        address=info.get("address"),
         province_id=info.get("provinceId"),
         risk_level=info.get("riskLevel"),
         stage_id=info.get("stageId"),

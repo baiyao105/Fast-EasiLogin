@@ -34,6 +34,18 @@ def _configure_sqlite(dbapi_connection, connection_record) -> None:
     cursor.execute("PRAGMA journal_mode=WAL")
     cursor.execute("PRAGMA busy_timeout=30000")
     cursor.execute("PRAGMA foreign_keys=ON")
+    # 轻量迁移：补齐 users 表扩展资料列
+    for ddl in (
+        "ALTER TABLE users ADD COLUMN school TEXT",
+        "ALTER TABLE users ADD COLUMN stage_name TEXT",
+        "ALTER TABLE users ADD COLUMN subject_name TEXT",
+        "ALTER TABLE users ADD COLUMN join_unit_time INTEGER",
+        "ALTER TABLE users ADD COLUMN account_type INTEGER",
+    ):
+        try:
+            cursor.execute(ddl)
+        except Exception:
+            pass
     cursor.close()
 
 

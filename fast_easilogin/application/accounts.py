@@ -39,7 +39,21 @@ class AccountApplication:
             raise RuntimeError("credential_encryption_unavailable")
         if await get_user(db, value.profile.user_id):
             raise ValueError("account_already_exists")
-        record = UserRecord(user_id=value.profile.user_id, phone=value.profile.phone, password="", nick_name=value.profile.nickname, real_name=value.profile.real_name, avatar_url=value.profile.avatar_url)
+        now = datetime.now(UTC)
+        record = UserRecord(
+            user_id=value.profile.user_id,
+            phone=value.profile.phone,
+            password="",
+            nick_name=value.profile.nickname,
+            real_name=value.profile.real_name,
+            avatar_url=value.profile.avatar_url,
+            school=value.profile.school,
+            stage_name=value.profile.stage_name,
+            subject_name=value.profile.subject_name,
+            last_login_at=now,
+            created_at=now,
+            updated_at=now,
+        )
         await save_user(db, record)
         await save_credentials(db, record.user_id, encryptor.decrypt(value.account), encryptor.decrypt(value.password), encryptor)
         value.used = True
