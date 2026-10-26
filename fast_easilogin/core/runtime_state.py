@@ -71,8 +71,8 @@ class RuntimeState:
 
     async def acquire_inflight(self, uid: str) -> bool:
         """获取 inflight 锁
-            Returns:
-                True=已获取，False=已有请求在进行。"""
+        Returns:
+            True=已获取，False=已有请求在进行。"""
         async with self._inflight_lock:
             if uid in self._inflight_users:
                 return False
