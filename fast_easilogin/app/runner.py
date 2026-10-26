@@ -27,11 +27,13 @@ def run(argv: list[str] | None = None) -> None:
     """同步入口"""
     if argv is None:
         import sys
+
         argv = sys.argv[1:]
 
     # 服务安装/卸载是一次性操作
     if "--install-by-service" in argv:
         from fast_easilogin.core.service_manager import WindowsServiceManager
+
         WindowsServiceManager.install(
             service_name="SeewoFastLoginService",
             module="fast_easilogin.__main__",
@@ -45,6 +47,7 @@ def run(argv: list[str] | None = None) -> None:
 
     if "--uninstall-service" in argv:
         from fast_easilogin.core.service_manager import WindowsServiceManager
+
         WindowsServiceManager.remove("SeewoFastLoginService")
         return
 
