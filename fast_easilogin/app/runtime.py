@@ -88,8 +88,10 @@ class AppRuntime:
 
         logger.success(
             "服务启动成功: api=http://{}:{} dashboard=http://{}:{}",
-            api_cfg.host, api_cfg.port,
-            dashboard_cfg.host, dashboard_cfg.port,
+            api_cfg.host,
+            api_cfg.port,
+            dashboard_cfg.host,
+            dashboard_cfg.port,
         )
 
     async def run(self, stop_event: asyncio.Event | None = None) -> None:
@@ -127,6 +129,7 @@ class AppRuntime:
 
 def _is_port_available(host: str, port: int) -> bool:
     import socket
+
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         try:
             s.bind((host, port))
